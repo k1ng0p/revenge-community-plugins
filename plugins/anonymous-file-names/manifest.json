@@ -5,7 +5,7 @@
 	"description": "Randomizes file names before you upload them.",
 	"icon": "UnknownGameIcon",
 	"author": "k1ng_op <641266820187160576>",
-  "contributors": ["siguma"],
+    "contributors": ["siguma"],
 	"version": "1.0.0",
 	"dependencies": {
 		"revenge.api": { "version": ">=1 <2" },
