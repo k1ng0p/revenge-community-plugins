@@ -1,6 +1,7 @@
 import { getModules } from '@revenge-mod/modules/finders'
 import { withProps } from '@revenge-mod/modules/finders/filters'
 import { instead } from '@revenge-mod/patcher'
+import { noop } from '@revenge-mod/utils/callback'
 
 interface IdleTimer {
 	start(...args: unknown[]): unknown
@@ -20,10 +21,9 @@ export default plugin({
 				withProps<CallIdleManager>('idleTimeout', 'handleVoiceStateUpdates'),
 				manager => {
 					try {
-						const timer = manager.idleTimeout ?? manager.default?.idleTimeout
-
+						const timer = manager.idleTimeout
 						timer.stop()
-						cleanup(instead(timer, 'start', () => {}))
+						cleanup(instead(timer, 'start', noop))
 					} catch (e) {
 						plugin.reportError(e)
 					}
