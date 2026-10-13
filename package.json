@@ -11,6 +11,9 @@
 		"lint": "biome check",
 		"lint:types": "tsc --noEmit && tsc -p cli --noEmit"
 	},
+	"workspaces": [
+		"plugins/*"
+	],
 	"dependencies": {
 		"@revenge-mod/devtools-client": "^1.4.0",
 		"@revenge-mod/devtools-shared": "^1.3.0",
