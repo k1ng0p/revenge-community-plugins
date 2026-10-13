@@ -15,8 +15,6 @@ interface CallIdleManager {
 
 export default plugin({
 	start({ cleanup, plugin }) {
-		let restore: (() => void) | undefined
-
 		cleanup(
 			getModules(
 				withProps<CallIdleManager>('idleTimeout', 'handleVoiceStateUpdates'),
@@ -25,7 +23,7 @@ export default plugin({
 						const timer = manager.idleTimeout ?? manager.default?.idleTimeout
 
 						timer.stop()
-						restore = instead(timer, 'start', () => {})
+						cleanup(instead(timer, 'start', () => {}))
 					} catch (e) {
 						plugin.reportError(e)
 					}
@@ -33,6 +31,5 @@ export default plugin({
 				{ max: 1 },
 			),
 		)
-		cleanup(() => restore?.())
 	},
 })
