@@ -4,7 +4,7 @@
 	"name": "DisableCallIdle",
 	"description": "Disables automatically getting kicked from a DM voice call after 3 minutes and being moved to an AFK voice channel.",
 	"author": "k1ng_op <641266820187160576>",
-	"icon": "DenyIcon",
+	"icon": "disconnect",
 	"version": "1.0.0",
 	"dependencies": {
 		"revenge.api": {
