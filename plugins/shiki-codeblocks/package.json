@@ -1,0 +1,10 @@
+{
+	"name": "@revenge-mod/shiki-codeblocks",
+	"private": true,
+	"dependencies": {
+		"shiki": "^4"
+	},
+	"scripts": {
+		"generate": "bun scripts/generate.ts"
+	}
+}
