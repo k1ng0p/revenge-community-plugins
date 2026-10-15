@@ -8,7 +8,8 @@ import type { ComponentProps } from 'react'
 import type { Settings } from '.'
 import type { ThemeName } from './themes'
 
-const { Stack, TableRadioGroup, TableRadioRow } = Design
+const { Stack, TableRadioGroup, TableRadioRow, TableRowGroup, TableSwitchRow } =
+	Design
 
 type Props = ComponentProps<PluginSettingsComponent<{ jsonStorage: Settings }>>
 
@@ -24,6 +25,14 @@ export default function SettingsComponent({ api: { jsonStorage } }: Props) {
 		<Page>
 			<ScrollView>
 				<Stack spacing={24}>
+					<TableRowGroup>
+						<TableSwitchRow
+							label="Open on tap"
+							subLabel="Tap a code block to view it in full and select its text."
+							value={settings.openOnTap ?? DefaultSettings.openOnTap}
+							onValueChange={openOnTap => jsonStorage.set({ openOnTap })}
+						/>
+					</TableRowGroup>
 					{Groups.map(([type, title]) => (
 						<TableRadioGroup<ThemeName>
 							key={type}

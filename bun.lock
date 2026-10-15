@@ -19,12 +19,28 @@
         "@types/react": "^19.3.0",
         "react-native": "0.81.6",
         "typescript": "^7.0.2",
+        "zustand": "^5.0.15",
+      },
+    },
+    "plugins/api.themes": {
+      "name": "@revenge-mod/themes-api",
+    },
+    "plugins/settings.themes": {
+      "name": "@revenge-mod/themes-settings",
+      "devDependencies": {
+        "@revenge-mod/themes-api": "workspace:*",
       },
     },
     "plugins/shiki-codeblocks": {
       "name": "@revenge-mod/shiki-codeblocks",
       "dependencies": {
         "shiki": "^4",
+      },
+    },
+    "plugins/themes.legacy": {
+      "name": "@revenge-mod/legacy-themes",
+      "devDependencies": {
+        "@revenge-mod/themes-api": "workspace:*",
       },
     },
   },
@@ -241,9 +257,15 @@
 
     "@revenge-mod/devtools-shared": ["@revenge-mod/devtools-shared@1.3.0", "", { "dependencies": { "chalk": "^5.6.2", "devalue": "^5.3.2" } }, "sha512-MLox/xQsYtMG78R4R8sy32P5X7ILUNUPAX8IiWjUsPIclkTweDvwEAUadkvbBo8j+/ZJaJdif+Fg/C9YQNlOqg=="],
 
+    "@revenge-mod/legacy-themes": ["@revenge-mod/legacy-themes@workspace:plugins/themes.legacy"],
+
     "@revenge-mod/plugin-cli": ["@revenge-mod/plugin-cli@github:revenge-mod/revenge-plugin-cli#05ca261", { "dependencies": { "@swc/core": "^1.16.2", "fflate": "^0.8.3", "rolldown": "^1.2.7" }, "peerDependencies": { "@revenge-mod/types": "git+https://github.com/revenge-mod/revenge-types.git" }, "bin": { "revenge-plugin": "bin/revenge-plugin.js" } }, "revenge-mod-revenge-plugin-cli-05ca261", "sha512-8kEFgvKeaX58a0nTEfwOQXnB/K79+fY7c4fYFhx8YLU9AMv+NvVfgqFPYRumPjYiRg0/rpd2lbLRA09415nSpg=="],
 
     "@revenge-mod/shiki-codeblocks": ["@revenge-mod/shiki-codeblocks@workspace:plugins/shiki-codeblocks"],
+
+    "@revenge-mod/themes-api": ["@revenge-mod/themes-api@workspace:plugins/api.themes"],
+
+    "@revenge-mod/themes-settings": ["@revenge-mod/themes-settings@workspace:plugins/settings.themes"],
 
     "@revenge-mod/types": ["@revenge-mod/types@github:revenge-mod/revenge-types#f41a4da", { "dependencies": { "buffer": "^6.0.3" }, "peerDependencies": { "@gorhom/bottom-sheet": "^5.2.14", "@react-native-clipboard/clipboard": "^1.16.3", "@react-native-community/netinfo": "^12.0.1", "@react-navigation/core": "^7.22.1", "@react-navigation/native": "^7.4.1", "@react-navigation/stack": "^7.11.2", "@shopify/flash-list": "2.3.2", "@types/node": "^26.6.3", "react": "19.2.3", "react-native": "0.86.0", "react-native-gesture-handler": "2.29.0", "react-native-reanimated": "4.6.0", "react-native-safe-area-context": "^5.10.0" }, "optionalPeers": ["@gorhom/bottom-sheet", "@react-native-clipboard/clipboard", "@react-native-community/netinfo", "@react-navigation/core", "@react-navigation/native", "@react-navigation/stack", "@shopify/flash-list", "@types/node", "react-native-safe-area-context"] }, "revenge-mod-revenge-types-f41a4da", "sha512-ckbYPVPBE0NuoSwnRtxv2+aNW2GrVNdtwtsmTiLl7xsPNLVW5ts5IG65fRBJkjvwNfTLEGGThl/VmV0XukIWdA=="],
 
@@ -842,6 +864,8 @@
     "yargs": ["yargs@17.7.3", "", { "dependencies": { "cliui": "^8.0.1", "escalade": "^3.1.1", "get-caller-file": "^2.0.5", "require-directory": "^2.1.1", "string-width": "^4.2.3", "y18n": "^5.0.5", "yargs-parser": "^21.1.1" } }, "sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g=="],
 
     "yargs-parser": ["yargs-parser@21.1.1", "", {}, "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw=="],
+
+    "zustand": ["zustand@5.0.15", "", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 

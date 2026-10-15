@@ -2,6 +2,7 @@
 
 Highlights code blocks in chat with [Shiki](https://shiki.style), the TextMate grammar highlighter VS Code uses, instead of Discord's built-in highlighter.
 Pick a theme for Discord's dark themes and one for its light theme in the plugin settings.
+Tap a code block to open it in a viewer, where its text can be selected and copied (can be turned off in settings).
 
 ## Architecture
 
@@ -50,8 +51,16 @@ graph TD
   - Each `CodeBlockContentNode` takes its highlight from the cache when it's created (right after JS stored it), and keeps it in a weak map for as long as Discord keeps the node.
     Rows are rendered again whenever they scroll back into view, so this keeps them highlighted even after the cache dropped their blocks.
 - `Highlights.kt` holds the `HighlightCache`, an LRU of 512 blocks keyed by language and content. It only hands highlights to the nodes of one row update.
+- `CodeViewer.kt` makes code blocks tappable and shows the viewer.
+  Message text uses Discord's own touch handling (`NestedScrollOnTouchTracker`), which only taps spans implementing `NestedClickableSpan`.
+  That interface is in Discord's class loader, so the spans are `java.lang.reflect.Proxy`s of it, set over the block after `renderCodeBlock`.
+  They expand to line bounds so the whole block is tappable, and hand long presses to the message row's own listener (`getNestedLongClickListener`), so they open the message actions like anywhere else in the message.
+  The viewer is a dialog with the same spans in a selectable `TextView`, in Discord's code font, scrolling horizontally.
+  JS tells native whether it's enabled (`palmdevs.shiki.setOpenOnTap`), which is checked on every tap.
 
-Anything unexpected falls back to Discord's own highlighting instead of breaking chat: unknown languages, blocks over 20,000 characters, cache misses, and JS errors.
+`ansi` blocks are colored like on desktop, with the theme's terminal palette. Discord strips their escape sequences before rows reach native, so `ansi.ts` finds the raw block in the stored message (`MessageStore`, including forwards) by its stripped text, and highlights that. ANSI is built into Shiki, and its tokens leave out escape sequences, so JS sends the shown text (`text`) and background colors (`backgrounds`) along with the spans.
+Blocks in languages that aren't shipped, or over 20,000 characters, are left plain in the theme's colors, to match the rest.
+Anything unexpected falls back to Discord's own highlighting instead of breaking chat: cache misses and JS errors.
 
 ### Assets
 
@@ -71,6 +80,6 @@ Then commit the regenerated `assets/shiki`.
 
 ### Limitations
 
-- Changing a theme in settings needs a reload. Rows already rendered keep their highlights, and Discord doesn't send them again.
+- Changing a theme in settings needs a reload (turning Open on tap on or off doesn't). Rows already rendered keep their highlights, and Discord doesn't send them again.
 - The first block in a language is naturally slower, as its grammar is read and compiled then.
 - Fenced code inside a `markdown` code block isn't highlighted, as the languages Markdown embeds lazily aren't loaded.

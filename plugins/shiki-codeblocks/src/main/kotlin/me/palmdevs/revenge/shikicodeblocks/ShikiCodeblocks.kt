@@ -23,13 +23,27 @@ private const val CACHE_CAPACITY = 512
 val shikiCodeblocks = plugin {
     val cache = HighlightCache(CACHE_CAPACITY)
     var unhooks = emptyList<XC_MethodHook.Unhook>()
+    var taps: CodeBlockTaps? = null
 
     start {
-        unhooks = hookCodeStyle(classLoader, cache, log)
+        val codeFont = codeFontOf(classLoader)
+        taps = runCatching {
+            CodeBlockTaps(classLoader) { block ->
+                withAppActivity { activity -> activity.runOnUiThread { showCodeViewer(activity, block, codeFont) } }
+            }
+        }.onFailure { errors.tryEmit(it) }.getOrNull()
+
+        unhooks = hookCodeStyle(classLoader, cache, taps, log)
 
         registerNativeMethod("palmdevs.shiki.put") { args ->
             val json by args.asDelegate().string()
             cache.putAll(json)
+            null
+        }
+
+        registerNativeMethod("palmdevs.shiki.setOpenOnTap") { args ->
+            val enabled by args.asDelegate().boolean()
+            taps?.enabled = enabled
             null
         }
 
@@ -42,6 +56,9 @@ val shikiCodeblocks = plugin {
     stop {
         for (unhook in unhooks) unhook.unhook()
         unhooks = emptyList()
+        // Blocks already rendered keep their spans
+        taps?.enabled = false
+        taps = null
         cache.clear()
     }
 }

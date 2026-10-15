@@ -4,6 +4,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
@@ -32,8 +33,15 @@ private const val BLOCK_BACKGROUND_SPAN = "com.discord.span.utilities.spannable.
  * Rows are rendered again whenever they scroll back into view, by then [cache] may have dropped their blocks.
  * So each code block node takes its highlight from [cache] once it is created (right after JS stored it),
  * and keeps it for as long as Discord keeps the node.
+ *
+ * Blocks also get a span from [taps], opening them in the viewer where their text can be selected.
  */
-internal fun hookCodeStyle(classLoader: ClassLoader, cache: HighlightCache, log: Logger): List<XC_MethodHook.Unhook> {
+internal fun hookCodeStyle(
+    classLoader: ClassLoader,
+    cache: HighlightCache,
+    taps: CodeBlockTaps?,
+    log: Logger,
+): List<XC_MethodHook.Unhook> {
     val codeStyle = classLoader.loadClass(CODE_STYLE)
     val node = classLoader.loadClass(CODE_BLOCK_NODE)
     val getLang = node.getMethod("getLang")
@@ -77,13 +85,25 @@ internal fun hookCodeStyle(classLoader: ClassLoader, cache: HighlightCache, log:
                 param.setObjectExtra(EXTRA_START, (param.args[0] as SpannableStringBuilder).length)
             },
             after = { param ->
-                val highlight = rendered.get() ?: return@hook
+                val highlight = rendered.get()
                 rendered.set(null)
-                if (fillPaint == null) return@hook
 
                 val builder = param.args[0] as SpannableStringBuilder
                 val start = param.getObjectExtra(EXTRA_START) as Int
-                builder.paintBlockBackground(start, fillPaint, highlight.bg)
+                if (highlight != null && fillPaint != null) builder.paintBlockBackground(start, fillPaint, highlight.bg)
+
+                // Tapping a hidden spoiler reveals it instead
+                val rc = param.args[2]
+                if (taps != null && taps.enabled && spoilerIsHidden.invoke(rc) != true) {
+                    val target = param.args[1]
+                    val span = taps.span(
+                        getLang.invoke(target) as String,
+                        getContent.invoke(target) as String,
+                        highlight,
+                        rc,
+                    )
+                    builder.span(span, start, builder.length)
+                }
             },
         ),
     )
@@ -104,15 +124,23 @@ private inline fun Method.hook(
 })
 
 internal fun SpannableStringBuilder.appendHighlighted(content: String, highlight: Highlight) {
+    val text = highlight.text ?: content
     val start = length
-    append(content)
+    append(text)
     setSpan(ForegroundColorSpan(highlight.fg), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+    val backgrounds = highlight.backgrounds
+    for (i in 0 until backgrounds.size - 2 step 3) {
+        val from = backgrounds[i]
+        val to = backgrounds[i + 1]
+        if (from in 0..<to && to <= text.length) span(BackgroundColorSpan(backgrounds[i + 2]), start + from, start + to)
+    }
 
     val spans = highlight.spans
     for (i in 0 until spans.size - 3 step 4) {
         val from = spans[i]
         val to = spans[i + 1]
-        if (from < 0 || to > content.length || from >= to) continue
+        if (from < 0 || to > text.length || from >= to) continue
 
         val color = spans[i + 2]
         val style = spans[i + 3]

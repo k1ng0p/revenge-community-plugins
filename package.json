@@ -9,7 +9,7 @@
 		"plan-releases": "revenge-plugin plan-releases",
 		"serve": "revenge-plugin serve",
 		"lint": "biome check",
-		"lint:types": "tsc --noEmit && tsc -p cli --noEmit"
+		"lint:types": "tsc -b plugins/*/tsconfig.json && tsc -p cli --noEmit"
 	},
 	"workspaces": [
 		"plugins/*"
@@ -28,7 +28,8 @@
 		"@types/node": "^26.6.5",
 		"@types/react": "^19.3.0",
 		"react-native": "0.81.6",
-		"typescript": "^7.0.2"
+		"typescript": "^7.0.2",
+		"zustand": "^5.0.15"
 	},
 	"overrides": {
 		"@react-native/community-cli-plugin": "npm:dry-uninstall",

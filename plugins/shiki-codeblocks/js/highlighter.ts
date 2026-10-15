@@ -1,7 +1,11 @@
 import { createHighlighterCoreSync } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import { getIndex, readAsset } from './assets'
-import type { LanguageRegistration, ThemeRegistration } from 'shiki/core'
+import type {
+	LanguageRegistration,
+	ThemedToken,
+	ThemeRegistration,
+} from 'shiki/core'
 import type { ThemeName } from './themes'
 
 /** Hightlight cache, see `Highlight` in Highlights.kt. */
@@ -10,8 +14,12 @@ export interface Highlight {
 	content: string
 	fg: number
 	bg: number
-	/** Flat `start, end, color, fontStyle` quadruples. */
+	/** Flat `start, end, color, fontStyle` quadruples, offsets into `text` if set, else `content`. */
 	spans: number[]
+	/** What to show instead of `content`, as for ANSI, where escape sequences aren't shown. */
+	text?: string
+	/** Flat `start, end, color` triples. */
+	backgrounds?: number[]
 }
 
 /** Upper limit in case Discord manages to render a large code block. */
@@ -39,48 +47,122 @@ export function createHighlighter() {
 			shiki.loadThemeSync(readAsset<ThemeRegistration>(`themes/${name}`))
 	}
 
-	/** Highlights a code block. Returns `null` for languages that aren't shipped. */
+	/**
+	 * Highlights a code block. Blocks in languages that aren't shipped, or too long to tokenize,
+	 * are plain but still in the theme's colors, to look like the rest.
+	 */
 	return function highlight(
 		lang: string,
 		content: string,
 		theme: ThemeName,
-	): Highlight | null {
-		if (content.length > MaxContentLength) return null
+	): Highlight {
+		loadTheme(theme)
 
-		const name = getIndex().languages[lang.trim().toLowerCase()]
-		if (!name) return null
+		const id = lang.trim().toLowerCase()
+		if (id === 'ansi' && content.length <= MaxContentLength)
+			return highlightAnsi(lang, content, theme)
+
+		const name = getIndex().languages[id]
+		if (!name || content.length > MaxContentLength) {
+			const { fg, bg } = shiki.getTheme(theme)
+			return {
+				lang: lang.trim(),
+				content,
+				fg: parseColor(fg) ?? White,
+				bg: parseColor(bg) ?? Black,
+				spans: [],
+			}
+		}
 
 		loadLanguage(name)
-		loadTheme(theme)
 
 		const result = shiki.codeToTokens(content, { lang: name, theme })
 		const fg = parseColor(result.fg) ?? White
-		const bg = parseColor(result.bg) ?? Black
+		const spans = createSpans(fg)
 
-		const spans: number[] = []
 		for (const line of result.tokens)
-			for (const token of line) {
-				const color = parseColor(token.color) ?? fg
-				const style = Math.max(token.fontStyle ?? 0, 0)
-				if (color === fg && !style) continue
+			for (const token of line)
+				spans.add(token, token.offset, token.offset + token.content.length)
 
-				const start = token.offset
-				const end = start + token.content.length
-				const last = spans.length - 4
-
-				// Adjacent tokens of the same style become one span
-				if (
-					last >= 0 &&
-					spans[last + 1] === start &&
-					spans[last + 2] === color &&
-					spans[last + 3] === style
-				)
-					spans[last + 1] = end
-				else spans.push(start, end, color, style)
-			}
-
-		return { lang: lang.trim(), content, fg, bg, spans }
+		return {
+			lang: lang.trim(),
+			content,
+			fg,
+			bg: parseColor(result.bg) ?? Black,
+			spans: spans.spans,
+		}
 	}
+
+	/**
+	 * ANSI is built into Shiki, with colors from the theme's terminal palette.
+	 * Its tokens leave out escape sequences and only carry their line's offset, so the shown text is rebuilt from them.
+	 */
+	function highlightAnsi(
+		lang: string,
+		content: string,
+		theme: ThemeName,
+	): Highlight {
+		const result = shiki.codeToTokens(content, { lang: 'ansi', theme })
+		const fg = parseColor(result.fg) ?? White
+		const spans = createSpans(fg)
+
+		let text = ''
+		result.tokens.forEach((line, index) => {
+			if (index) text += '\n'
+			for (const token of line) {
+				const start = text.length
+				text += token.content
+				spans.add(token, start, text.length)
+			}
+		})
+
+		return {
+			lang: lang.trim(),
+			content,
+			fg,
+			bg: parseColor(result.bg) ?? Black,
+			spans: spans.spans,
+			text,
+			backgrounds: spans.backgrounds,
+		}
+	}
+}
+
+/** Collects token styles into spans. Tokens in the default style are dropped, and adjacent ones of the same style merged. */
+function createSpans(fg: number) {
+	const spans: number[] = []
+	const backgrounds: number[] = []
+
+	return {
+		spans,
+		backgrounds,
+		add(token: ThemedToken, start: number, end: number) {
+			const color = parseColor(token.color) ?? fg
+			const style = Math.max(token.fontStyle ?? 0, 0)
+			if (color !== fg || style) merge(spans, start, end, color, style)
+
+			const background = parseColor(token.bgColor)
+			if (background !== null) merge(backgrounds, start, end, background)
+		},
+	}
+}
+
+/** Pushes a `start, end, ...style` span, or extends the last one if it ends at `start` with the same style. */
+function merge(
+	spans: number[],
+	start: number,
+	end: number,
+	...style: number[]
+) {
+	const size = 2 + style.length
+	const last = spans.length - size
+	if (
+		last >= 0 &&
+		spans[last + 1] === start &&
+		style.every((value, i) => spans[last + 2 + i] === value)
+	)
+		spans[last + 1] = end
+	else spans.push(start, end, ...style)
 }
 
 const White = 0xffffffff | 0

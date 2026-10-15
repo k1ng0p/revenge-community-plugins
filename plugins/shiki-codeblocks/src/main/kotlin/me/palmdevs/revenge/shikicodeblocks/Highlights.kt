@@ -1,14 +1,23 @@
 package me.palmdevs.revenge.shikicodeblocks
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * Shiki's rendering of one code block.
  *
- * [spans] is flat, four ints per token: `start, end, color, fontStyle`, offsets into the block's content.
- * Colors are ARGB, and [fontStyle] bits follow Shiki's `FontStyle`.
+ * [spans] is flat, four ints per token: `start, end, color, fontStyle`, offsets into [text] if set, else the block's content.
+ * [backgrounds] is flat too: `start, end, color`. Colors are ARGB, and `fontStyle` bits follow Shiki's `FontStyle`.
+ *
+ * [text] is shown instead of the content when it differs, as for ANSI, whose escape sequences aren't shown.
  */
-internal class Highlight(val fg: Int, val bg: Int, val spans: IntArray)
+internal class Highlight(
+    val fg: Int,
+    val bg: Int,
+    val spans: IntArray,
+    val text: String? = null,
+    val backgrounds: IntArray = IntArray(0),
+)
 
 internal object FontStyle {
     const val ITALIC = 1
@@ -23,16 +32,17 @@ internal class HighlightCache(private val capacity: Int) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Highlight>) = size > capacity
     }
 
-    /** Stores every block of a `{ blocks: [{ lang, content, fg, bg, spans }] }` payload. */
+    /** Stores every block of a `{ blocks: [{ lang, content, fg, bg, spans, text?, backgrounds? }] }` payload. */
     fun putAll(json: String) {
         val blocks = JSONObject(json).getJSONArray("blocks")
         val parsed = (0 until blocks.length()).map { i ->
             val block = blocks.getJSONObject(i)
-            val spans = block.getJSONArray("spans")
             keyOf(block.getString("lang"), block.getString("content")) to Highlight(
                 fg = block.getInt("fg"),
                 bg = block.getInt("bg"),
-                spans = IntArray(spans.length()) { spans.getInt(it) },
+                spans = block.getJSONArray("spans").toIntArray(),
+                text = if (block.has("text")) block.getString("text") else null,
+                backgrounds = block.optJSONArray("backgrounds")?.toIntArray() ?: IntArray(0),
             )
         }
         synchronized(entries) { for ((key, highlight) in parsed) entries[key] = highlight }
@@ -45,3 +55,5 @@ internal class HighlightCache(private val capacity: Int) {
     // JS keys by the trimmed language too, as Discord trims it before parsing.
     private fun keyOf(lang: String, content: String) = lang.trim() + '\u0000' + content
 }
+
+private fun JSONArray.toIntArray() = IntArray(length()) { getInt(it) }

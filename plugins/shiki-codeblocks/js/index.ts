@@ -3,8 +3,9 @@ import { JsonStorageUpdateMode } from '@revenge-mod/json-storage'
 import { getModules } from '@revenge-mod/modules/finders'
 import { withProps } from '@revenge-mod/modules/finders/filters'
 import { before } from '@revenge-mod/patcher'
+import { getRawAnsiBlocks, isAnsi, stripAnsi } from './ansi'
 import { createHighlighter } from './highlighter'
-import { clearHighlights, putHighlights } from './native'
+import { clearHighlights, putHighlights, setOpenOnTap } from './native'
 import SettingsComponent from './settings'
 import { getThemes } from './themes'
 import type { DiscordModules } from '@revenge-mod/discord/types'
@@ -15,11 +16,14 @@ export interface Settings {
 	/** For Discord's dark, darker and midnight themes. */
 	dark: ThemeName
 	light: ThemeName
+	/** Whether tapping a code block opens it in a viewer, where its text can be selected. */
+	openOnTap: boolean
 }
 
 export const DefaultSettings: Settings = {
 	dark: 'github-dark-default',
 	light: 'github-light-default',
+	openOnTap: true,
 }
 
 /** Commands of Discord's native chat list. Rows are serialized to JSON after this. */
@@ -45,18 +49,30 @@ const MemoCapacity = 256
 export default plugin<{ jsonStorage: Settings }>({
 	jsonStorage: { load: true, default: DefaultSettings },
 	start({ cleanup, jsonStorage, plugin }) {
-		// Key to highlight (or null for languages that aren't shipped), least recently used first
-		const memo = new Map<string, Highlight | null>()
+		// Key to highlight, least recently used first
+		const memo = new Map<string, Highlight>()
 		const highlight = createHighlighter()
 		let reported = false
 
+		const settings = () =>
+			(jsonStorage.cache as Partial<Settings> | undefined) ?? DefaultSettings
+		const syncOpenOnTap = () =>
+			setOpenOnTap(settings().openOnTap ?? DefaultSettings.openOnTap)
+
 		clearHighlights()
+		syncOpenOnTap()
 		cleanup(clearHighlights)
 
-		// Rows already rendered keep their highlights, and Discord doesn't send them again for this
 		cleanup(
-			jsonStorage.subscribe((_, mode) => {
-				if (mode !== JsonStorageUpdateMode.Load) plugin.requireReload()
+			jsonStorage.subscribe((update, mode) => {
+				// Checked on every tap, so this applies right away
+				syncOpenOnTap()
+				// Rows already rendered keep their highlights, and Discord doesn't send them again for this
+				if (
+					mode !== JsonStorageUpdateMode.Load &&
+					('dark' in update || 'light' in update)
+				)
+					plugin.requireReload()
 			}),
 		)
 
@@ -64,32 +80,42 @@ export default plugin<{ jsonStorage: Settings }>({
 			const type =
 				(Stores.ThemeStore as ThemeStore).theme === 'light' ? 'light' : 'dark'
 			// Stored themes may be missing, or removed in a later version
-			const stored = (jsonStorage.cache as Partial<Settings> | undefined)?.[
-				type
-			]
+			const stored = settings()[type]
 			const theme =
 				stored && stored in getThemes() ? stored : DefaultSettings[type]
-
-			const nodes: CodeBlockNode[] = []
-			collectCodeBlocks(rows, nodes)
 
 			// Every block in the rows is sent, even if it was before. Native hands them to the nodes made from these rows,
 			// so it never has to remember a block for later, and can't disagree with JS on what it has.
 			const keys = new Set<string>()
 			const blocks: Highlight[] = []
-			for (const { lang, content } of nodes) {
-				// Switching between light and dark sends every row again, which then get the other theme
-				const key = `${theme}\0${lang.trim()}\0${content}`
-				if (keys.has(key)) continue
-				keys.add(key)
+			for (const row of rows) {
+				const nodes: CodeBlockNode[] = []
+				collectCodeBlocks(row, nodes)
+				if (!nodes.length) continue
 
-				let result = memo.get(key)
-				if (result === undefined) result = highlight(lang, content, theme)
-				else memo.delete(key)
+				const raw = nodes.some(node => isAnsi(node.lang))
+					? getRawAnsiBlocks(row)
+					: undefined
 
-				memo.set(key, result)
-				if (memo.size > MemoCapacity) memo.delete(memo.keys().next().value!)
-				if (result) blocks.push(result)
+				for (const { lang, content } of nodes) {
+					// ANSI blocks come without escape sequences, so they are highlighted from the stored message
+					const source =
+						(isAnsi(lang) && raw?.get(stripAnsi(content))) || content
+
+					// Switching between light and dark sends every row again, which then get the other theme
+					const key = `${theme}\0${lang.trim()}\0${source}`
+					if (keys.has(key)) continue
+					keys.add(key)
+
+					let result = memo.get(key)
+					if (result === undefined) result = highlight(lang, source, theme)
+					else memo.delete(key)
+
+					memo.set(key, result)
+					if (memo.size > MemoCapacity) memo.delete(memo.keys().next().value!)
+					// Native looks blocks up by the content it gets
+					blocks.push(source === content ? result : { ...result, content })
+				}
 			}
 
 			if (blocks.length) putHighlights(blocks)
