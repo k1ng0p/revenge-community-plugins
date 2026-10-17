@@ -15,6 +15,7 @@ import {
 	readPreviewEmoji,
 	readThemesState,
 	registerPreviewFont,
+	writeBackgroundSettings,
 	writeColorsSelection,
 	writeEmojiSelection,
 	writeFontsSelection,
@@ -23,6 +24,7 @@ import {
 import type { PackagerAsset } from '@revenge-mod/assets/types'
 import type { PluginManifest } from '@revenge-mod/plugins/types'
 import type {
+	BackgroundSettings,
 	ColorsSelection,
 	EmojiPackDefinition,
 	EmojiSelection,
@@ -32,6 +34,7 @@ import type {
 	FontsSelection,
 	IconPackDefinition,
 	IconsSelection,
+	ThemeBackground,
 	ThemeBase,
 	ThemeDefinition,
 	ThemeGroupDefinition,
@@ -635,6 +638,79 @@ function androidResourceIdentifierOf(asset: PackagerAsset) {
 		.replace(/\//g, '_')
 		.replace(/[^a-z0-9_]/g, '')
 		.replace(/^(?:assets|assetsunstable_path)_/, '')
+}
+
+export interface ActiveBackground {
+	uri: string
+	opacity?: number
+	blur: number
+}
+
+let lastActiveBackground:
+	| {
+			theme: ThemeBackground | undefined
+			settings: BackgroundSettings | undefined
+			value: ActiveBackground | undefined
+	  }
+	| undefined
+
+/** Background the active color theme provides, if any. */
+export function themeBackgroundOf({ groups, selected }: ThemesStoreState) {
+	const colors = selected.colors
+	if (colors)
+		return groups[colors.plugin]?.[colors.group]?.themes[colors.theme]
+			?.background
+}
+
+export function activeBackgroundOf(state: ThemesStoreState) {
+	const theme = themeBackgroundOf(state)
+	const settings = state.selected.background
+	if (
+		lastActiveBackground &&
+		lastActiveBackground.theme === theme &&
+		lastActiveBackground.settings === settings
+	)
+		return lastActiveBackground.value
+
+	const source = settings?.source ?? 'theme'
+	// The theme's opacity and blur suit its own image only
+	const base = source === 'theme' ? theme : undefined
+	const path = source === 'custom' ? settings?.path : base?.path
+
+	const value: ActiveBackground | undefined = path
+		? {
+				uri: imageUriOf(path, state.selected.colors?.plugin),
+				opacity: settings?.opacity ?? base?.opacity,
+				blur: settings?.blur ?? base?.blur ?? 0,
+			}
+		: undefined
+
+	lastActiveBackground = { theme, settings, value }
+	return value
+}
+
+export async function setBackgroundSettings(
+	settings: BackgroundSettings | null,
+) {
+	if (
+		sameJson(themesStore.getState().selected.background, settings ?? undefined)
+	)
+		return
+
+	setSelected({ background: settings ?? undefined })
+	try {
+		await writeBackgroundSettings(settings)
+	} finally {
+		refreshThemedComponents()
+	}
+}
+
+export { importBackgroundImage } from './native'
+
+function imageUriOf(path: string, plugin: string | undefined) {
+	if (/^https?:\/\//i.test(path)) return path
+	if (path.startsWith('/')) return `file://${path}`
+	return plugin ? `file://${resolvePath(plugin, path)}` : path
 }
 
 function resolvePath(plugin: string, path: string) {

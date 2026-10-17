@@ -5,7 +5,7 @@
 	"description": "Import and use legacy themes and font packs by URL.",
 	"author": "Revenge",
 	"icon": "PaintPaletteIcon",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"dependencies": {
 		"revenge.api": {
 			"version": ">=1 <2"

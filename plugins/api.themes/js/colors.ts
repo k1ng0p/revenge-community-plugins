@@ -10,8 +10,11 @@ type PluginCleanupApi = PreInitPluginApi['cleanup']
 
 interface SemanticColorContext {
 	isProfileTheme?: boolean
-	gradient?: unknown
+	gradient?: { customThemeSettings?: object } | null
 }
+
+/** Custom theme settings of our backgrounds, whose gradient keeps theme colors. */
+export const ownGradientSettings = new WeakSet<object>()
 
 // ../discord_common/js/packages/tokens/native.tsx
 interface TokensModule {
@@ -63,11 +66,14 @@ export function patchColorTokens(cleanup: PluginCleanupApi) {
 				cleanup(
 					instead(internal, 'resolveSemanticColor', (args, original) => {
 						const [theme, color, context] = args
-						// User-picked colors for profile themes
+						const gradient = context?.gradient
+						// User-picked colors for profile themes, and Discord's gradient themes
 						if (
 							colors?.semantic &&
 							!context?.isProfileTheme &&
-							!context?.gradient
+							(!gradient ||
+								(gradient.customThemeSettings !== undefined &&
+									ownGradientSettings.has(gradient.customThemeSettings)))
 						) {
 							const name = internal.getSemanticColorName(color)
 							const value = colors.semantic[theme]?.[name]
@@ -108,6 +114,15 @@ export function resolvePreviewColors(
 	} finally {
 		setThemeColors(current)
 	}
+}
+
+/** Resolves an active semantic color, or `undefined` before Discord's tokens initialize. */
+export function resolveSemanticColor(theme: ThemeBase, name: string) {
+	if (!tokensModule) return
+
+	const { colors: tokens, internal } = tokensModule.default
+	const token = tokens[name]
+	if (token) return internal.resolveSemanticColor(theme, token)
 }
 
 /** Discord's colors without overrides, or `undefined` if Discord's module hasn't initialized. */

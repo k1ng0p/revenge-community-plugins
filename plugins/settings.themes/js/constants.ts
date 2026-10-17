@@ -6,6 +6,7 @@ export const Setting = {
 	RevengeThemesFontFamily: 'RevengeThemesFontFamily',
 	RevengeThemesPlugins: 'RevengeThemesPlugins',
 	RevengeThemesBrowse: 'RevengeThemesBrowse',
+	RevengeThemesBackground: 'RevengeThemesBackground',
 } as const
 
 export const RouteNames = {
@@ -16,4 +17,5 @@ export const RouteNames = {
 	[Setting.RevengeThemesFontFamily]: 'Revenge Themes Font Family',
 	[Setting.RevengeThemesPlugins]: 'Revenge Themes Plugins',
 	[Setting.RevengeThemesBrowse]: 'Revenge Themes Browse',
+	[Setting.RevengeThemesBackground]: 'Revenge Themes Background',
 } as const

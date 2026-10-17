@@ -4,6 +4,7 @@ import {
 	registerSettingsItems,
 } from '@revenge-mod/discord/modules/settings'
 import { Setting } from './constants'
+import RevengeThemesBackgroundSetting from './definitions/RevengeThemesBackgroundSetting'
 import RevengeThemesBrowseSetting from './definitions/RevengeThemesBrowseSetting'
 import RevengeThemesFontFamiliesSetting from './definitions/RevengeThemesFontFamiliesSetting'
 import RevengeThemesFontFamilySetting from './definitions/RevengeThemesFontFamilySetting'
@@ -21,6 +22,7 @@ export default function register() {
 		[Setting.RevengeThemesFontFamily]: RevengeThemesFontFamilySetting,
 		[Setting.RevengeThemesPlugins]: RevengeThemesPluginsSetting,
 		[Setting.RevengeThemesBrowse]: RevengeThemesBrowseSetting,
+		[Setting.RevengeThemesBackground]: RevengeThemesBackgroundSetting,
 	})
 	const removeFromSection = addSettingsItemToSection(
 		'REVENGE',

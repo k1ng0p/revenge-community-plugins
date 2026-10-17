@@ -2,6 +2,8 @@
 
 package io.github.revenge.themes
 
+import android.app.AndroidAppHelper
+import android.net.Uri
 import de.robv.android.xposed.XC_MethodHook
 import io.github.revenge.bridge.asDelegate
 import io.github.revenge.plugins.PluginScope
@@ -89,6 +91,37 @@ val themesPlugin = plugin {
             null
         }
 
+        registerNativeMethod("revenge.themes.setBackground") { args ->
+            select(args, ::backgroundSettingsOf) { s, v -> s.copy(background = v) }
+            null
+        }
+
+        // Copies a picked image (file:// or content://) into storage. Returns its absolute path.
+        registerNativeAsyncMethod("revenge.themes.importBackground") { args ->
+            check(running) { "${manifest.id} is not running" }
+            val uri by args.asDelegate().string()
+            val source = Uri.parse(uri)
+            val dir = File(storageDir, BACKGROUNDS_DIR).apply { mkdirs() }
+
+            val extension = source.lastPathSegment?.substringAfterLast('.', "")
+                ?.takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
+            val file = File(dir, "${System.currentTimeMillis()}${extension?.let { ".$it" }.orEmpty()}")
+
+            val input = if (source.scheme == "content") {
+                checkNotNull(AndroidAppHelper.currentApplication()) { "No application context" }
+                    .contentResolver.openInputStream(source)
+            } else {
+                File(checkNotNull(source.path) { "Not a file: $uri" }).inputStream()
+            }
+            checkNotNull(input) { "Cannot read $uri" }.use { from -> file.outputStream().use { from.copyTo(it) } }
+
+            // Earlier imports are unused unless still selected
+            val selected = store.state.background?.path
+            dir.listFiles()?.forEach { if (it != file && it.absolutePath != selected) it.delete() }
+
+            file.absolutePath
+        }
+
         // Registers { name, variants } as a font family JS can render with. Hooks fonts now if no pack did at boot.
         registerNativeMethod("revenge.themes.previewFont") { args ->
             check(running) { "${manifest.id} is not running" }
@@ -147,6 +180,7 @@ val themesPlugin = plugin {
     }
 }
 
+private const val BACKGROUNDS_DIR = "backgrounds"
 private const val EMOJI_CACHE_DIR = "emoji-cache"
 private const val EMOJI_PREVIEW_DIR = "emoji-preview"
 

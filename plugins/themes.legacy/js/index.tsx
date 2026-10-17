@@ -6,6 +6,7 @@ import { pluginStorageDirFor } from '@revenge-mod/plugins/constants'
 import {
 	fontFileExtensionOf,
 	legacyFontFamilies,
+	legacyThemeBackground,
 	legacyThemeColors,
 	parseLegacyFontPack,
 	parseLegacyTheme,
@@ -59,6 +60,7 @@ function registerLegacyTheme(url: string, theme: LegacyTheme) {
 		description:
 			theme.description ?? theme.authors?.map(author => author.name).join(', '),
 		getColors: () => legacyThemeColors(theme),
+		background: legacyThemeBackground(theme),
 	})
 }
 

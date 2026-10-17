@@ -20,11 +20,25 @@ export interface DiscordColors {
 	raw: Record<string, string>
 }
 
+export interface ThemeBackground {
+	/** Image path, relative to the plugin directory or absolute, or an `http(s)` URL. */
+	path: string
+	/**
+	 * Image strength from 0 to 1, on top of the dimming Discord applies to gradient themes.
+	 * @default 1
+	 */
+	opacity?: number
+	/** Blur radius. @default 0 */
+	blur?: number
+}
+
 export interface ThemeDefinition {
 	name: string
 	description?: string
 	/** Evaluates colors when picked and to render previews in the picker. */
 	getColors(discord: DiscordColors): ThemeColors
+	/** Image behind the main screens and chat, which turn translucent like Discord's gradient themes. */
+	background?: ThemeBackground
 }
 
 export interface FontVariant {
@@ -138,10 +152,21 @@ export interface EmojiSelection {
 	font?: string
 }
 
+export interface BackgroundSettings {
+	/** Whose image to show: the color theme's, {@link path}, or none. */
+	source: 'theme' | 'custom' | 'none'
+	/** Absolute image path or `http(s)` URL, for `custom`. */
+	path?: string
+	opacity?: number
+	blur?: number
+}
+
 export interface ThemesState {
 	format: number
 	colors?: ColorsSelection
 	fonts?: FontsSelection
 	icons?: IconsSelection
 	emoji?: EmojiSelection
+	/** User's background settings. Unset means use the color theme's background. */
+	background?: BackgroundSettings
 }

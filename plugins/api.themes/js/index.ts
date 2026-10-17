@@ -1,3 +1,4 @@
+import { patchBackgrounds } from './background'
 import { patchColorTokens, patchThemeContext } from './colors'
 import * as store from './store'
 
@@ -20,6 +21,7 @@ export default plugin({
 	preInit({ cleanup, decorate, plugin: self }) {
 		patchColorTokens(cleanup)
 		patchThemeContext(cleanup)
+		patchBackgrounds(cleanup)
 		loadSelections()
 
 		decorate(plugin => {
