@@ -67,6 +67,9 @@ Anything unexpected falls back to Discord's own highlighting instead of breaking
 Grammar and themes are stored in `assets/shiki`, and are read when a code block first needs them:
 
 - `langs/<name>.json`: one grammar each. A grammar's `embeddedLangs` (eg. CSS and JavaScript in HTML) are loaded first.
+- `regexes/<name>.json`: the grammar's patterns, converted from Oniguruma to JS RegExps (`js/regex.ts`), keyed by the source string the engine asks for.
+  Converting was most of the cost of a language's first block (JavaScript: ~350 ms on Hermes, now ~70 ms), so it's done when generating.
+  The keys include vscode-textmate's `\z` rewrite and its four `\A`/`\G` anchor variants. Patterns made at runtime (`end` with back-references) are converted on the device.
 - `themes/<name>.json`
 - `index.json`: language names and aliases to their grammar, and theme labels and types for the settings.
 
@@ -81,5 +84,5 @@ Then commit the regenerated `assets/shiki`.
 ### Limitations
 
 - Changing a theme in settings needs a reload (turning Open on tap on or off doesn't). Rows already rendered keep their highlights, and Discord doesn't send them again.
-- The first block in a language is naturally slower, as its grammar is read and compiled then.
+- The first block in a language is slower, as Hermes compiles its grammar's RegExps then. Large grammars still take a while (C++: ~600 ms).
 - Fenced code inside a `markdown` code block isn't highlighted, as the languages Markdown embeds lazily aren't loaded.

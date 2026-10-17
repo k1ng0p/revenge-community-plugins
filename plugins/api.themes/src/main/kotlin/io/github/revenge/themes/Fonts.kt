@@ -60,13 +60,16 @@ internal class FontOverrides(
     private val cache = ConcurrentHashMap<Key, Typeface>()
     private val unhandled = ConcurrentHashMap.newKeySet<String>()
 
+    private val failed = ConcurrentHashMap.newKeySet<Key>()
+    private val brokenFiles = ConcurrentHashMap.newKeySet<String>()
+
     fun handles(names: List<String>) = names.any { it in families }
 
     fun typeface(name: String, weight: Int, italic: Boolean, assets: AssetManager?): Typeface? {
         val key = Key(name, weight, italic)
         cache[key]?.let { return it }
 
-        if (name in unhandled) return null
+        if (name in unhandled || key in failed) return null
         val names = splitFontFamilies(name)
         if (!handles(names)) {
             unhandled.add(name)
@@ -76,7 +79,12 @@ internal class FontOverrides(
         val typeface = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) buildWithFallbacks(names, weight, italic, assets)
             else buildLegacy(names, weight, italic)
-        }.onFailure { log.e("Failed to build typeface for $name", it) }.getOrNull() ?: return null
+        }.onFailure { log.e("Failed to build typeface for $name", it) }.getOrNull()
+
+        if (typeface == null) {
+            failed.add(key)
+            return null
+        }
 
         cache[key] = typeface
         return typeface
@@ -105,8 +113,11 @@ internal class FontOverrides(
             // FontFamily rejects two fonts with one style.
             if (!seen.add(variant.weight to variant.italic)) continue
 
+            if (variant.path in brokenFiles) continue
+
             val file = File(variant.path)
             if (!file.isFile) {
+                brokenFiles.add(variant.path)
                 log.w("Missing font file for $name: ${variant.path}")
                 continue
             }
@@ -117,7 +128,10 @@ internal class FontOverrides(
                     .setSlant(if (variant.italic) FontStyle.FONT_SLANT_ITALIC else FontStyle.FONT_SLANT_UPRIGHT)
                     .apply { fontVariationSettingsOf(variant.axes)?.let(::setFontVariationSettings) }
                     .build()
-            }.onFailure { log.e("Failed to load font ${variant.path}", it) }.getOrNull() ?: continue
+            }.onFailure {
+                brokenFiles.add(variant.path)
+                log.e("Failed to load font ${variant.path}", it)
+            }.getOrNull() ?: continue
 
             builder = builder?.addFont(font) ?: FontFamily.Builder(font)
         }

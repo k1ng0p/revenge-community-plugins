@@ -4,10 +4,11 @@ import { ReactNavigationNative } from '@revenge-mod/externals/react-navigation'
 import { FlatList, StyleSheet } from 'react-native'
 import { RouteNames, Setting } from '../constants'
 import { Kinds } from '../utils/kinds'
-import { markReloadNeeded } from '../utils/reload'
+import { markReloadNeeded, useReloadNeeded } from '../utils/reload'
 import { showErrorToast } from '../utils/toasts'
 import PluginInfoButton from './PluginInfoButton'
 import { subLabelOf } from './Previews'
+import ReloadButton from './ReloadButton'
 import type { EntryKind } from '@revenge-mod/themes-api/store'
 import type { GroupRouteParams } from '../types'
 import type { Section } from '../utils/kinds'
@@ -35,12 +36,15 @@ export interface OptionListProps {
 
 /** Radio selection groups grouped by section within a page. */
 export function OptionList({ kind, sections, empty }: OptionListProps) {
+	const reloadNeeded = useReloadNeeded()
+
 	return (
 		<FlatList
 			contentContainerStyle={styles.list}
 			fadingEdgeLength={16}
 			data={sections}
 			keyExtractor={section => section.key}
+			ListHeaderComponent={reloadNeeded ? <ReloadButton /> : null}
 			ListFooterComponent={
 				empty ? (
 					<Text variant="text-sm/medium" color="text-muted">
@@ -81,7 +85,12 @@ function SectionGroup({
 					const option = options.find(option => option.key === key)
 					// Ignore tapping currently selected option
 					if (!option || option.selected) return
-					option.select().then(markReloadNeeded, showErrorToast)
+					option
+						.select()
+						.then(
+							Kinds[kind].live ? undefined : markReloadNeeded,
+							showErrorToast,
+						)
 				}}
 			>
 				{options.map(option => (

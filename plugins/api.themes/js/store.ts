@@ -5,7 +5,12 @@ import {
 } from '@revenge-mod/assets'
 import { pluginDistDirFor } from '@revenge-mod/plugins/constants'
 import { createStore } from 'zustand/vanilla'
-import { resolvePreviewColors, setThemeColors } from './colors'
+import {
+	discordColors,
+	refreshThemedComponents,
+	resolvePreviewColors,
+	setThemeColors,
+} from './colors'
 import {
 	readPreviewEmoji,
 	readThemesState,
@@ -193,11 +198,14 @@ export async function selectTheme(
 
 	if (plugin !== null) {
 		const theme = entryOf(plugin, groupId!, 'themes', themeId!)
+		const discord = discordColors()
+		if (!discord) throw new Error("Discord's colors haven't loaded yet")
+
 		selection = {
 			plugin,
 			group: groupId!,
 			theme: themeId!,
-			values: theme.getColors(),
+			values: theme.getColors(discord),
 		}
 	}
 
@@ -205,7 +213,11 @@ export async function selectTheme(
 
 	setThemeColors(selection?.values)
 	setSelected({ colors: selection })
-	await writeColorsSelection(selection ?? null)
+	try {
+		await writeColorsSelection(selection ?? null)
+	} finally {
+		refreshThemedComponents()
+	}
 }
 
 /**
@@ -367,7 +379,11 @@ export async function selectIconPack(
 
 	applyIconOverrides(previous, selection)
 	setSelected({ icons: selection })
-	await writeIconsSelection(selection ?? null)
+	try {
+		await writeIconsSelection(selection ?? null)
+	} finally {
+		refreshThemedComponents()
+	}
 }
 
 export function selectEmojiPack(plugin: null): Promise<void>
@@ -413,10 +429,14 @@ export function previewColorsOf(
 	names: string[],
 	context?: object,
 ) {
+	if (plugin === null)
+		return resolvePreviewColors(undefined, theme, names, context)
+
+	const discord = discordColors()
+	if (!discord) return
+
 	return resolvePreviewColors(
-		plugin === null
-			? undefined
-			: entryOf(plugin, groupId, 'themes', themeId).getColors(),
+		entryOf(plugin, groupId, 'themes', themeId).getColors(discord),
 		theme,
 		names,
 		context,

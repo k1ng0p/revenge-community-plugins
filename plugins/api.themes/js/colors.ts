@@ -1,8 +1,10 @@
 import { getModules } from '@revenge-mod/modules/finders'
 import { withProps } from '@revenge-mod/modules/finders/filters'
 import { instead } from '@revenge-mod/patcher'
+import { createElement, useSyncExternalStore } from 'react'
 import type { PreInitPluginApi } from '@revenge-mod/plugins/types'
-import type { ThemeBase, ThemeColors } from './types'
+import type { ComponentType } from 'react'
+import type { DiscordColors, ThemeBase, ThemeColors } from './types'
 
 type PluginCleanupApi = PreInitPluginApi['cleanup']
 
@@ -108,7 +110,112 @@ export function resolvePreviewColors(
 	}
 }
 
-/** Updates active colors for future resolutions. Rendered components keep existing colors until re-render. */
+/** Discord's colors without overrides, or `undefined` if Discord's module hasn't initialized. */
+export function discordColors(): DiscordColors | undefined {
+	if (rawColors) return { raw: { ...rawColors, ...rawOriginals } }
+}
+
+interface RootThemeContextProviderProps {
+	enabledExperiments?: string[]
+}
+
+interface RootThemeContextModule {
+	RootThemeContextProvider: ComponentType<RootThemeContextProviderProps>
+	DisableCustomTheme: unknown
+}
+
+/** Bumped when colors or icons change at runtime. Never reused, since Discord caches resolved colors per theme context key. */
+let colorsVersion = 0
+const versionListeners = new Set<() => void>()
+const noExperiments: string[] = []
+const versionedExperiments = new WeakMap<
+	string[],
+	{ version: number; value: string[] }
+>()
+
+/**
+ * Wraps Discord's root theme context provider so {@link refreshThemedComponents} can give the theme context a new key.
+ * The key goes into `enabledExperiments`, which nested theme providers copy from the root.
+ */
+export function patchThemeContext(cleanup: PluginCleanupApi) {
+	let stopped = false
+	const wrappers = new WeakSet<object>()
+
+	cleanup(
+		() => {
+			stopped = true
+		},
+		getModules(
+			withProps<RootThemeContextModule>(
+				'RootThemeContextProvider',
+				'DisableCustomTheme',
+			),
+			module => {
+				const Original = module.RootThemeContextProvider
+				if (stopped || wrappers.has(Original)) return
+
+				function RootThemeContextProvider(
+					props: RootThemeContextProviderProps,
+				) {
+					const version = useSyncExternalStore(
+						subscribeColorsVersion,
+						getColorsVersion,
+					)
+
+					return createElement(
+						Original,
+						version
+							? {
+									...props,
+									enabledExperiments: experimentsWithVersion(
+										props.enabledExperiments ?? noExperiments,
+										version,
+									),
+								}
+							: props,
+					)
+				}
+
+				wrappers.add(RootThemeContextProvider)
+				module.RootThemeContextProvider = RootThemeContextProvider
+				cleanup(() => {
+					if (module.RootThemeContextProvider === RootThemeContextProvider)
+						module.RootThemeContextProvider = Original
+				})
+			},
+			{ cached: true },
+		),
+	)
+}
+
+/** Re-renders themed components with the active colors and icons. */
+export function refreshThemedComponents() {
+	colorsVersion++
+	for (const listener of versionListeners) listener()
+}
+
+function subscribeColorsVersion(listener: () => void) {
+	versionListeners.add(listener)
+	return () => {
+		versionListeners.delete(listener)
+	}
+}
+
+function getColorsVersion() {
+	return colorsVersion
+}
+
+// Same array for the same input, so the context only changes when the version does
+function experimentsWithVersion(experiments: string[], version: number) {
+	const cached = versionedExperiments.get(experiments)
+	if (cached?.version === version) return cached.value
+
+	const value = [...experiments, `revenge-themes-colors-${version}`]
+	versionedExperiments.set(experiments, { version, value })
+	return value
+}
+
+/** Updates active colors for future resolutions. Rendered components keep existing colors until {@link refreshThemedComponents}. */
 export function setThemeColors(next: ThemeColors | undefined) {
 	restoreRawColors()
 	colors = next

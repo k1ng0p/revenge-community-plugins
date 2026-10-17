@@ -1,11 +1,13 @@
 import { createHighlighterCoreSync } from 'shiki/core'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import { getIndex, readAsset } from './assets'
+import { construct, precompile } from './regex'
 import type {
 	LanguageRegistration,
 	ThemedToken,
 	ThemeRegistration,
 } from 'shiki/core'
+import type { PrecompiledRegex } from './regex'
 import type { ThemeName } from './themes'
 
 /** Hightlight cache, see `Highlight` in Highlights.kt. */
@@ -26,9 +28,22 @@ export interface Highlight {
 const MaxContentLength = 20_000
 
 export function createHighlighter() {
+	// Source to its precompiled RegExp, from `assets/shiki/regexes` of the grammars loaded
+	const regexes = new Map<string, PrecompiledRegex>()
+
 	const shiki = createHighlighterCoreSync({
 		// Hermes has no WebAssembly or RegExp `v` flag. Unsupported patterns are skipped instead of failing the grammar.
-		engine: createJavaScriptRegexEngine({ target: 'ES2018', forgiving: true }),
+		engine: createJavaScriptRegexEngine({
+			forgiving: true,
+			regexConstructor: source => {
+				// Only patterns made at runtime (`end` with back-references) aren't precompiled
+				const regex = regexes.has(source)
+					? regexes.get(source)!
+					: precompile(source)
+				if (!regex) throw new Error(`Unsupported pattern: ${source}`)
+				return construct(regex)
+			},
+		}),
 	})
 
 	// Marked before loading, so grammars embedding each other don't recurse forever
@@ -38,6 +53,11 @@ export function createHighlighter() {
 		languages.add(name)
 
 		const grammar = readAsset<LanguageRegistration>(`langs/${name}`)
+		const precompiled = readAsset<Record<string, PrecompiledRegex>>(
+			`regexes/${name}`,
+		)
+		for (const source in precompiled) regexes.set(source, precompiled[source]!)
+
 		for (const embedded of grammar.embeddedLangs ?? []) loadLanguage(embedded)
 		shiki.loadLanguageSync(grammar)
 	}

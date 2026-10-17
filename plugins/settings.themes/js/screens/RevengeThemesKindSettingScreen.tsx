@@ -3,7 +3,6 @@ import Page from '@revenge-mod/components/Page'
 import { Design } from '@revenge-mod/discord/design'
 import { useLayoutEffect } from 'react'
 import { OptionList } from '../components/OptionList'
-import ReloadButton from '../components/ReloadButton'
 import { RouteNames, Setting } from '../constants'
 import { FontRoleLabels, Kinds, useKindSections } from '../utils/kinds'
 import type { KindRouteParams } from '../types'
@@ -58,8 +57,7 @@ export default function RevengeThemesKindSettingScreen({
 	}, [navigation, title, individualFonts])
 
 	return (
-		<Page spacing={16}>
-			<ReloadButton />
+		<Page>
 			<OptionList
 				kind={kind}
 				sections={sections}

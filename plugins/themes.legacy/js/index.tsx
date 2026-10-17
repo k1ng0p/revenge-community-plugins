@@ -1,6 +1,7 @@
 /// <reference types="@revenge-mod/themes-api" />
 
-import { rm, writeFile } from '@revenge-mod/modules/native/fs'
+import { FileModule } from '@revenge-mod/discord/native'
+import { rm } from '@revenge-mod/modules/native/fs'
 import { pluginStorageDirFor } from '@revenge-mod/plugins/constants'
 import {
 	fontFileExtensionOf,
@@ -93,9 +94,10 @@ export async function importLegacyFontPack(url: string) {
 	await Promise.all(
 		Object.entries(pack.main).map(async ([name, fileUrl]) => {
 			const path = `${dir}/${name}${fontFileExtensionOf(fileUrl)}`
-			await fetch(fileUrl)
-				.then(res => res.text())
-				.then(data => writeFile(path, data))
+			const res = await fetch(fileUrl)
+			if (!res.ok)
+				throw new Error(`Request failed with ${res.status}: ${fileUrl}`)
+			await writeBinaryFile(path, await res.arrayBuffer())
 			files[name] = path
 		}),
 	)
@@ -116,6 +118,27 @@ export async function removeLegacyImport(
 	await storage.set({ ...current, [kind]: rest }, true)
 
 	if (kind === 'fonts') await rm(fontPackDirOf(url))
+}
+
+async function writeBinaryFile(path: string, data: ArrayBuffer) {
+	const { DocumentsDirPath } = FileModule.getConstants()
+	if (!path.startsWith(`${DocumentsDirPath}/`))
+		throw new Error(`Path outside documents directory: ${path}`)
+
+	await FileModule.writeFile(
+		'documents',
+		path.slice(DocumentsDirPath.length + 1),
+		toBase64(data),
+		'base64',
+	)
+}
+
+function toBase64(data: ArrayBuffer) {
+	const bytes = new Uint8Array(data)
+	let binary = ''
+	for (let i = 0; i < bytes.length; i += 0x8000)
+		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+	return btoa(binary)
 }
 
 /** Resolves storage directory path for a font pack using a hash of its source URL. */

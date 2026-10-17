@@ -1,7 +1,6 @@
 import Page from '@revenge-mod/components/Page'
 import { useLayoutEffect } from 'react'
 import { OptionList } from '../components/OptionList'
-import ReloadButton from '../components/ReloadButton'
 import { useFontFamilySections } from '../utils/fonts'
 import type { FontFamilyRouteParams } from '../types'
 
@@ -24,8 +23,7 @@ export default function RevengeThemesFontFamilySettingScreen({
 	}, [navigation, family])
 
 	return (
-		<Page spacing={16}>
-			<ReloadButton />
+		<Page>
 			<OptionList kind="fontPacks" sections={sections} />
 		</Page>
 	)

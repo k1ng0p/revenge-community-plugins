@@ -4,7 +4,6 @@ import { useStore } from 'zustand/react'
 import { pluginSettings, themesInternal } from '..'
 import { OptionList } from '../components/OptionList'
 import PluginInfoButton from '../components/PluginInfoButton'
-import ReloadButton from '../components/ReloadButton'
 import { FontRoleLabels, Kinds, useGroupEntries } from '../utils/kinds'
 import type { GroupRouteParams } from '../types'
 
@@ -59,8 +58,7 @@ export default function RevengeThemesGroupSettingScreen({
 	}, [navigation, title, subtitle, icon, plugin])
 
 	return (
-		<Page spacing={16}>
-			<ReloadButton />
+		<Page>
 			<OptionList
 				kind={kind}
 				sections={options.length ? sections : []}

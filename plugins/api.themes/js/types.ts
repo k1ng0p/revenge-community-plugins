@@ -15,11 +15,16 @@ export interface ThemeGroupDefinition {
 	description?: string
 }
 
+export interface DiscordColors {
+	/** Raw palette colors without theme overrides. */
+	raw: Record<string, string>
+}
+
 export interface ThemeDefinition {
 	name: string
 	description?: string
-	/** Evaluates colors when picked at boot and to render previews in the picker. */
-	getColors(): ThemeColors
+	/** Evaluates colors when picked and to render previews in the picker. */
+	getColors(discord: DiscordColors): ThemeColors
 }
 
 export interface FontVariant {

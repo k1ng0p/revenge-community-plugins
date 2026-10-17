@@ -1,4 +1,4 @@
-import { patchColorTokens } from './colors'
+import { patchColorTokens, patchThemeContext } from './colors'
 import * as store from './store'
 
 const {
@@ -19,6 +19,7 @@ const SettingsPluginId = 'revenge.settings.themes'
 export default plugin({
 	preInit({ cleanup, decorate, plugin: self }) {
 		patchColorTokens(cleanup)
+		patchThemeContext(cleanup)
 		loadSelections()
 
 		decorate(plugin => {
@@ -39,7 +40,8 @@ export default plugin({
 					registerEmojiPack(id, groupId, packId, pack),
 			}
 
-			if (id === SettingsPluginId) plugin.api.themesInternal = { store }
+			if (id === SettingsPluginId)
+				plugin.api.themesInternal = { store, plugin: self }
 
 			return () => {
 				unregisterAll(id)
