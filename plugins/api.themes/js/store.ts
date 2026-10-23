@@ -516,12 +516,15 @@ export function previewIconsOf(
 function fontFamiliesOf(plugin: string, pack: FontPackDefinition) {
 	const families: Record<string, FontSource['variants']> = {}
 	for (const [family, variants] of Object.entries(pack.families))
-		families[family] = variants.map(variant => ({
-			path: resolvePath(plugin, variant.path),
-			weight: variant.weight ?? 400,
-			italic: variant.italic ?? false,
-			axes: variant.axes ?? {},
-		}))
+		families[family] =
+			variants === 'system-ui'
+				? [{ path: 'system-ui', weight: 400, italic: false, axes: {} }]
+				: variants.map(variant => ({
+						path: resolvePath(plugin, variant.path),
+						weight: variant.weight ?? 400,
+						italic: variant.italic ?? false,
+						axes: variant.axes ?? {},
+					}))
 	return families
 }
 
@@ -644,6 +647,7 @@ export interface ActiveBackground {
 	uri: string
 	opacity?: number
 	blur: number
+	dimming: number
 }
 
 let lastActiveBackground:
@@ -654,7 +658,7 @@ let lastActiveBackground:
 	  }
 	| undefined
 
-/** Background the active color theme provides, if any. */
+/** Background configuration provided by the active color theme, if defined. */
 export function themeBackgroundOf({ groups, selected }: ThemesStoreState) {
 	const colors = selected.colors
 	if (colors)
@@ -673,7 +677,7 @@ export function activeBackgroundOf(state: ThemesStoreState) {
 		return lastActiveBackground.value
 
 	const source = settings?.source ?? 'theme'
-	// The theme's opacity and blur suit its own image only
+	// Theme opacity, blur and dimming defaults apply exclusively to theme backgrounds.
 	const base = source === 'theme' ? theme : undefined
 	const path = source === 'custom' ? settings?.path : base?.path
 
@@ -682,6 +686,7 @@ export function activeBackgroundOf(state: ThemesStoreState) {
 				uri: imageUriOf(path, state.selected.colors?.plugin),
 				opacity: settings?.opacity ?? base?.opacity,
 				blur: settings?.blur ?? base?.blur ?? 0,
+				dimming: settings?.dimming ?? base?.dimming ?? 0.7,
 			}
 		: undefined
 

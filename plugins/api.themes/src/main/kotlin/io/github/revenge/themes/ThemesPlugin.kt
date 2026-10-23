@@ -47,12 +47,12 @@ val themesPlugin = plugin {
         val discordEmoji = DiscordEmoji(appInfo.sourceDir, File(emojiPreviewRoot, "discord"), log)
 
         unhooks = buildList {
-            if (fonts != null) hookReactFontManager(classLoader, fontsFor, log)?.let(::add)
-            if (icons != null) addAll(hookImageSources(classLoader, { icons }, log))
+            if (fonts != null) hookReactFontManager(dexFinder, fontsFor, log)?.let(::add)
+            if (icons != null) addAll(hookImageSources(dexFinder, { icons }, log))
             if (emoji != null) addAll(hookEmojiAssets({ emoji }, log))
         }
 
-        colors = DiscordNativeColors(classLoader, log).apply {
+        colors = DiscordNativeColors(dexFinder, log).apply {
             runCatching { apply(state.colors?.values) }.onFailure { log.e("Failed to apply native colors", it) }
         }
 
@@ -96,7 +96,7 @@ val themesPlugin = plugin {
             null
         }
 
-        // Copies a picked image (file:// or content://) into storage. Returns its absolute path.
+        // Copies picked image (file:// or content://) into storage. Returns its absolute path.
         registerNativeAsyncMethod("revenge.themes.importBackground") { args ->
             check(running) { "${manifest.id} is not running" }
             val uri by args.asDelegate().string()
@@ -122,7 +122,7 @@ val themesPlugin = plugin {
             file.absolutePath
         }
 
-        // Registers { name, variants } as a font family JS can render with. Hooks fonts now if no pack did at boot.
+        // Registers { name, variants } as font family JS can render with. Hooks ReactFontManager on demand.
         registerNativeMethod("revenge.themes.previewFont") { args ->
             check(running) { "${manifest.id} is not running" }
             val json by args.asDelegate().string()
@@ -132,17 +132,17 @@ val themesPlugin = plugin {
 
             val variants = request.getJSONArray("variants")
             fontPreviews[name] = (0 until variants.length()).map { fontVariantOf(variants.getJSONObject(it)) }
-            // A new instance drops typefaces cached for an older registration of a name
+            // New instance drops typefaces cached for an older registration of a name
             previewFonts.set(FontOverrides(fontPreviews.toMap(), log))
 
             synchronized(fontPreviews) {
-                if (fonts == null && previewUnhook == null) previewUnhook = hookReactFontManager(classLoader, fontsFor, log)
+                if (fonts == null && previewUnhook == null) previewUnhook = hookReactFontManager(dexFinder, fontsFor, log)
             }
             null
         }
 
-        // Takes { pack: { images?, font? } | null, codepoints: [] }, returns a path (or null) per codepoints.
-        // Emoji the pack lacks, or all with a null pack, are Discord's .
+        // Takes { pack: { images?, font? } | null, codepoints: [] }, returns path (or null) per codepoints.
+        // Falls back to Discord defaults when omitted from pack or when pack is null.
         registerNativeAsyncMethod("revenge.themes.previewEmoji") { args ->
             check(running) { "${manifest.id} is not running" }
             val json by args.asDelegate().string()

@@ -7,9 +7,10 @@ import android.graphics.fonts.FontFamily
 import android.graphics.fonts.FontStyle
 import android.os.Build
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XposedHelpers
 import io.github.revenge.Logger
+import io.github.revenge.xposed.api.DexFinder
 import java.io.File
+import java.lang.reflect.Modifier
 import java.util.concurrent.ConcurrentHashMap
 
 private const val FONTS_ASSET_PATH = "fonts/"
@@ -17,6 +18,9 @@ private const val FONTS_ASSET_PATH = "fonts/"
 /** Family name prefix of fonts registered for previews, so they never collide with names the app requests. */
 internal const val FONT_PREVIEW_PREFIX = "revenge-themes-preview:"
 private val FONT_FILE_EXTENSIONS = arrayOf(".ttf", ".otf")
+
+/** Variant path that draws with the device's UI font. */
+internal const val SYSTEM_UI_FONT = "system-ui"
 
 private const val DEFAULT_WEIGHT = 400
 private const val MAX_CUSTOM_FALLBACKS = 64
@@ -90,9 +94,13 @@ internal class FontOverrides(
         return typeface
     }
 
+    private fun isSystemUi(name: String) = families[name]?.any { it.path == SYSTEM_UI_FONT } == true
+
     private fun buildWithFallbacks(names: List<String>, weight: Int, italic: Boolean, assets: AssetManager?): Typeface? {
-        val chain = names.mapNotNull { familyOf(it, assets) }.take(MAX_CUSTOM_FALLBACKS)
-        if (chain.isEmpty()) return null
+        // system-ui ends the chain, the builder falls back to system fonts anyway
+        val custom = names.takeWhile { !isSystemUi(it) }
+        val chain = custom.mapNotNull { familyOf(it, assets) }.take(MAX_CUSTOM_FALLBACKS)
+        if (chain.isEmpty()) return if (custom.size < names.size) styled(Typeface.DEFAULT, weight, italic) else null
 
         val builder = Typeface.CustomFallbackBuilder(chain.first())
         for (family in chain.drop(1)) builder.addCustomFallback(family)
@@ -151,6 +159,8 @@ internal class FontOverrides(
 
     private fun buildLegacy(names: List<String>, weight: Int, italic: Boolean): Typeface? {
         val variants = names.firstNotNullOfOrNull { families[it] } ?: return null
+        if (variants.any { it.path == SYSTEM_UI_FONT }) return styled(Typeface.DEFAULT, weight, italic)
+
         val variant = closestFontVariant(variants.filter { File(it.path).isFile }, weight, italic) ?: return null
         val settings = fontVariationSettingsOf(variant.axes)
 
@@ -162,9 +172,12 @@ internal class FontOverrides(
                 .build()
         else Typeface.createFromFile(variant.path)
 
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Typeface.create(base, weight, italic)
-        else Typeface.create(base, (if (weight >= 700) Typeface.BOLD else 0) or (if (italic) Typeface.ITALIC else 0))
+        return styled(base, weight, italic)
     }
+
+    private fun styled(base: Typeface, weight: Int, italic: Boolean): Typeface =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Typeface.create(base, weight.coerceIn(1, 1000), italic)
+        else Typeface.create(base, (if (weight >= 700) Typeface.BOLD else 0) or (if (italic) Typeface.ITALIC else 0))
 }
 
 /**
@@ -172,33 +185,36 @@ internal class FontOverrides(
  * React Native text style goes through. It runs before RN collapses weight and italic into one of four styles.
  */
 internal fun hookReactFontManager(
-    classLoader: ClassLoader,
+    dexFinder: DexFinder,
     overrides: (name: String) -> FontOverrides?,
     log: Logger,
 ): XC_MethodHook.Unhook? {
-    val manager = classLoader.loadClassOrNull("com.facebook.react.common.assets.ReactFontManager")
-        ?: classLoader.loadClassOrNull("com.facebook.react.views.text.ReactFontManager")
-    val style = classLoader.loadClassOrNull("com.facebook.react.common.assets.ReactFontManager\$TypefaceStyle")
-
-    if (manager == null || style == null) {
-        log.w("ReactFontManager not found, fonts won't apply")
-        return null
-    }
-
     val method = runCatching {
-        manager.getDeclaredMethod("getTypeface", String::class.java, style, AssetManager::class.java)
+        dexFinder.findMethod {
+            matcher {
+                paramTypes(String::class.java.name, null, AssetManager::class.java.name)
+                returnType(Typeface::class.java.name)
+                addUsingString("fontFamilyName")
+                addUsingString(FONTS_ASSET_PATH)
+            }
+        } ?: error("not found")
     }.getOrElse {
-        log.w("ReactFontManager.getTypeface(String, TypefaceStyle, AssetManager) not found, fonts won't apply")
+        log.w("ReactFontManager.getTypeface(String, TypefaceStyle, AssetManager) not found, fonts won't apply: ${it.message}")
         return null
     }
+
+    // TypefaceStyle(weight, italic)
+    val style = method.parameterTypes[1].declaredFields.filterNot { Modifier.isStatic(it.modifiers) }
+    val weightField = style.singleOrNull { it.type == Int::class.javaPrimitiveType }?.apply { isAccessible = true }
+    val italicField = style.singleOrNull { it.type == Boolean::class.javaPrimitiveType }?.apply { isAccessible = true }
 
     return method.hookBefore {
         val name = args[0] as? String ?: return@hookBefore
         val fonts = overrides(name) ?: return@hookBefore
         val typefaceStyle = args[1] ?: return@hookBefore
 
-        val weight = runCatching { XposedHelpers.getIntField(typefaceStyle, "weight") }.getOrDefault(DEFAULT_WEIGHT)
-        val italic = runCatching { XposedHelpers.getBooleanField(typefaceStyle, "italic") }.getOrDefault(false)
+        val weight = weightField?.getInt(typefaceStyle) ?: DEFAULT_WEIGHT
+        val italic = italicField?.getBoolean(typefaceStyle) ?: false
 
         fonts.typeface(name, weight, italic, args[2] as? AssetManager)?.let { result = it }
     }

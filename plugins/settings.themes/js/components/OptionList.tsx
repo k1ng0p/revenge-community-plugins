@@ -2,11 +2,13 @@ import { getAssetIdByName } from '@revenge-mod/assets'
 import { Design } from '@revenge-mod/discord/design'
 import { ReactNavigationNative } from '@revenge-mod/externals/react-navigation'
 import { FlatList, StyleSheet } from 'react-native'
+import { pluginSettings } from '..'
 import { RouteNames, Setting } from '../constants'
 import { Kinds } from '../utils/kinds'
 import { markReloadNeeded, useReloadNeeded } from '../utils/reload'
 import { showErrorToast } from '../utils/toasts'
 import PluginInfoButton from './PluginInfoButton'
+import PluginSettingsButton from './PluginSettingsButton'
 import { subLabelOf } from './Previews'
 import ReloadButton from './ReloadButton'
 import type { EntryKind } from '@revenge-mod/themes-api/store'
@@ -22,8 +24,11 @@ const styles = StyleSheet.create({
 		gap: 32,
 		paddingBottom: 16,
 	},
-	headerText: {
+	flex: {
 		flex: 1,
+	},
+	autoWidth: {
+		width: 'auto',
 	},
 })
 
@@ -127,7 +132,7 @@ function SectionGroup({
 function SectionHeader({ section }: { section: Section }) {
 	return (
 		<Stack direction="horizontal" spacing={8} align="center">
-			<Stack spacing={4} style={styles.headerText}>
+			<Stack spacing={4} style={styles.flex}>
 				{Boolean(section.title) && (
 					<Text variant="heading-xl/bold" color="text-strong">
 						{section.title}
@@ -140,7 +145,13 @@ function SectionHeader({ section }: { section: Section }) {
 				)}
 			</Stack>
 			{section.plugin !== undefined && (
-				<PluginInfoButton plugin={section.plugin} />
+				<Stack direction="horizontal" spacing={0} style={styles.autoWidth}>
+					{/* The InfoButton already has padding. */}
+					{pluginSettings.hasPluginSettings(section.plugin) && (
+						<PluginSettingsButton plugin={section.plugin} />
+					)}
+					<PluginInfoButton plugin={section.plugin} />
+				</Stack>
 			)}
 		</Stack>
 	)

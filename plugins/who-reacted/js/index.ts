@@ -105,17 +105,6 @@ export default plugin<{ jsonStorage: Settings }>({
 		default: DefaultSettings,
 	},
 	start({ cleanup, jsonStorage, plugin }) {
-		const MessageReactionsStore =
-			Stores.MessageReactionsStore as DiscordModules.Flux.Store<{
-				getReactions(
-					channelId: string,
-					messageId: string,
-					emoji: ReactionEmoji,
-					limit: number,
-					type: ReactionType,
-				): Map<string, ApiUser> | undefined
-			}>
-
 		let HTTP: HTTP | undefined
 		let AvatarUtils: AvatarUtils | undefined
 		let Endpoints: Constants['Endpoints'] | undefined
@@ -245,6 +234,17 @@ export default plugin<{ jsonStorage: Settings }>({
 		function useDiscordReactors(reaction: Reaction) {
 			const known = reactors.get(reaction.key)
 			if (known?.count === reaction.count) return
+
+			const MessageReactionsStore =
+				Stores.MessageReactionsStore as DiscordModules.Flux.Store<{
+					getReactions(
+						channelId: string,
+						messageId: string,
+						emoji: ReactionEmoji,
+						limit: number,
+						type: ReactionType,
+					): Map<string, ApiUser> | undefined
+				}>
 
 			const users = MessageReactionsStore.getReactions(
 				reaction.channelId,

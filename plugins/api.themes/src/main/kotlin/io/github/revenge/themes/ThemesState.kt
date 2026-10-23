@@ -87,6 +87,7 @@ internal data class BackgroundSettings(
     val path: String? = null,
     val opacity: Double? = null,
     val blur: Double? = null,
+    val dimming: Double? = null,
 )
 
 internal data class ThemesState(
@@ -148,6 +149,7 @@ internal fun backgroundSettingsOf(json: JSONObject) = BackgroundSettings(
     path = json.optStringOrNull("path"),
     opacity = json.optDoubleOrNull("opacity"),
     blur = json.optDoubleOrNull("blur"),
+    dimming = json.optDoubleOrNull("dimming"),
 )
 
 private fun JSONObject.optDoubleOrNull(key: String): Double? =
@@ -226,6 +228,7 @@ private fun BackgroundSettings.toJson() = JSONObject().apply {
     path?.let { put("path", it) }
     opacity?.let { put("opacity", it) }
     blur?.let { put("blur", it) }
+    dimming?.let { put("dimming", it) }
 }
 
 private fun ColorsSelection.toJson() = JSONObject().apply {

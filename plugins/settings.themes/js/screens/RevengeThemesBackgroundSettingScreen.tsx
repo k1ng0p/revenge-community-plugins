@@ -47,7 +47,7 @@ interface Props {
 	}
 }
 
-/** Overrides the color theme's background with a custom image or none, and tunes its opacity and blur. */
+/** Overrides the color theme's background with a custom image or none, and tunes its opacity, blur and dimming. */
 export default function RevengeThemesBackgroundSettingScreen({
 	navigation,
 }: Props) {
@@ -149,6 +149,15 @@ export default function RevengeThemesBackgroundSettingScreen({
 							step={1}
 							format={value => `${Math.round(value)}`}
 							onCommit={blur => update({ blur })}
+						/>
+						<SliderRow
+							label="Dimming"
+							value={settings?.dimming ?? base?.dimming ?? 0.7}
+							min={0}
+							max={1}
+							step={0.05}
+							format={value => `${Math.round(value * 100)}%`}
+							onCommit={dimming => update({ dimming })}
 						/>
 					</TableRowGroup>
 				)}

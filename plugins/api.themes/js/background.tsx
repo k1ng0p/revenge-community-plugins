@@ -1,12 +1,19 @@
 import { Stores } from '@revenge-mod/discord/flux'
 import { getModules } from '@revenge-mod/modules/finders'
 import { withProps } from '@revenge-mod/modules/finders/filters'
-import { createElement, useSyncExternalStore } from 'react'
+import { instead } from '@revenge-mod/patcher'
+import { noop } from '@revenge-mod/utils/callback'
+import { useSyncExternalStore } from 'react'
 import { Image, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { ownGradientSettings, resolveSemanticColor } from './colors'
+import {
+	ownGradientSettings,
+	ownGradients,
+	resolveSemanticColor,
+	SurfaceColor,
+} from './colors'
 import { activeBackgroundOf, themesStore } from './store'
 import type { PreInitPluginApi } from '@revenge-mod/plugins/types'
-import type { ComponentType } from 'react'
+import type { FunctionComponent } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 import type { ActiveBackground } from './store'
 import type { ThemeBase } from './types'
@@ -23,6 +30,14 @@ interface CustomThemeSettings {
 interface CustomThemeDisplaySettings {
 	baseTheme: ThemeBase
 	customTheme: CustomThemeSettings
+}
+
+// ../discord_app/modules/client_themes/native/ClientThemesUtils.tsx
+interface GradientMetadataModule {
+	getGradientThemeMetadata(
+		theme: ThemeBase,
+		gradient?: { customThemeSettings?: object } | null,
+	): object | null
 }
 
 // ../discord_app/modules/client_themes/native/useCustomThemeDisplaySettings.tsx
@@ -44,7 +59,7 @@ interface ThemedGradientProps {
 	wide?: boolean
 	/** Window height, past the container. */
 	tall?: boolean
-	/** Blends the gradient toward the base, behind surfaces without their own dimming overlay. */
+	/** Matches the gradient under a dimmed surface, for layers drawn above one (channel list, home drawer mask). */
 	mix?: boolean
 	style?: StyleProp<ViewStyle>
 	/** Specific gradient to draw, such as a theme picker swatch. */
@@ -59,7 +74,7 @@ interface ThemeStore {
 
 // ../discord_app/modules/client_themes/native/ThemedGradient.tsx
 interface ThemedGradientModule {
-	default: ComponentType<ThemedGradientProps>
+	default: FunctionComponent<ThemedGradientProps>
 	CustomThemedGradient: unknown
 	validateColors: unknown
 }
@@ -67,18 +82,12 @@ interface ThemedGradientModule {
 /** How much the gradient tints Discord's surfaces, from 0 to 100. */
 const BaseMix = 100
 
-/** Theme's main background, which Discord's surfaces should match. */
-const SurfaceColor = 'BACKGROUND_BASE_LOWER'
-
 // ../discord_app/modules/client_themes/native/ClientThemesUtils.tsx: surfaces mix the gradient at
-// 0.12 + 0.2 * baseMix (0.3 + ... in light) over black (white in light)
+// 0.12 + 0.2 * baseMix (0.3 in light) over black (white in light)
 const GradientWeight = {
 	dark: 0.12 + 0.2 * (BaseMix / 100),
 	light: 0.3 + 0.2 * (BaseMix / 100),
 }
-
-// ThemedGradient.tsx: mixed layers keep this much of the gradient color over black (white in light)
-const MixWeight = { dark: 0.3, light: 0.2 }
 
 let displaySettings:
 	| {
@@ -90,101 +99,113 @@ let displaySettings:
 	| undefined
 
 /**
- * Shows the active theme's background through Discord's custom theme gradient path:
- * surfaces turn translucent as with a gradient theme, and gradient layers draw the image.
- * Discord's own custom theme, preview, or server theme still takes precedence.
+ * Renders active theme background through Discord's custom gradient theme pipeline.
+ * Surfaces turn translucent and gradient layers draw the image.
+ * Discord custom themes, previews, and server themes take precedence.
  */
-export function patchBackgrounds(cleanup: PluginCleanupApi) {
-	let stopped = false
+export function patchBackgrounds(
+	cleanup: PluginCleanupApi,
+	startedLate: boolean,
+) {
+	const useBackgroundUpdates = startedLate
+		? // Avoids late patching that alters hook count or call order after initial render
+			noop
+		: () => useSyncExternalStore(themesStore.subscribe, activeBackground)
 
 	cleanup(
-		() => {
-			stopped = true
-		},
+		getModules(
+			withProps<GradientMetadataModule>('getGradientThemeMetadata'),
+			module => {
+				// Semantic color contexts get the metadata, without customThemeSettings
+				cleanup(
+					instead(
+						module,
+						'getGradientThemeMetadata',
+						function (args, original) {
+							const result = Reflect.apply(original, this, args)
+							const settings = args[1]?.customThemeSettings
+							const dimming = settings && ownGradientSettings.get(settings)
+							if (result && dimming !== undefined)
+								ownGradients.set(result, dimming)
+							return result
+						},
+					),
+				)
+			},
+			{ cached: true },
+		),
 		getModules(
 			withProps<CustomThemeDisplaySettingsModule>(
 				'useCustomThemeDisplaySettings',
 			),
 			module => {
-				const original = module.useCustomThemeDisplaySettings
-				if (stopped) return
-
-				// A hook, but adds no hooks of its own, so restoring it mid-render is safe
-				function useCustomThemeDisplaySettings(...args: unknown[]) {
-					return original(...args) ?? backgroundDisplaySettings()
-				}
-
-				module.useCustomThemeDisplaySettings = useCustomThemeDisplaySettings
-				cleanup(() => {
-					if (
-						module.useCustomThemeDisplaySettings ===
-						useCustomThemeDisplaySettings
-					)
-						module.useCustomThemeDisplaySettings = original
-				})
+				cleanup(
+					instead(module, 'useCustomThemeDisplaySettings', (args, orig) => {
+						useBackgroundUpdates()
+						const value = orig(...args)
+						return value ?? backgroundDisplaySettings()
+					}),
+				)
 			},
 			{ cached: true },
 		),
 		getModules(
 			withProps<ThemedGradientModule>('CustomThemedGradient', 'validateColors'),
 			module => {
-				const Original = module.default
-				if (stopped) return
+				cleanup(
+					instead(module, 'default', (args, Original) => {
+						const [props] = args
 
-				function ThemedGradient(props: ThemedGradientProps) {
-					const background = useSyncExternalStore(
-						themesStore.subscribe,
-						activeBackground,
-					)
-					const theme = useSyncExternalStore(subscribeThemeStore, currentTheme)
-					const { width, height } = useWindowDimensions()
+						const background = useSyncExternalStore(
+							themesStore.subscribe,
+							activeBackground,
+						)
+						const theme = useSyncExternalStore(
+							subscribeThemeStore,
+							currentTheme,
+						)
+						const { width, height } = useWindowDimensions()
 
-					if (!background || props.gradientOverride != null)
-						return createElement(Original, props)
+						if (!background || props.gradientOverride != null)
+							return <Original {...props} />
 
-					// Drawn like Discord draws the gradient. Surfaces above add their own dimming overlays.
-					const light = theme === 'light'
-					const weight = props.mix
-						? light
-							? MixWeight.light
-							: MixWeight.dark
-						: 1
+						// Mixed layers look like the image under a dimmed surface, which is the surface color at dimming over the image
+						const light = theme === 'light'
+						const weight = props.mix ? 1 - background.dimming : 1
 
-					return createElement(
-						View,
-						{
-							pointerEvents: 'none',
-							style: [
-								props.absolute ? StyleSheet.absoluteFill : props.style,
-								props.wide && { width },
-								props.tall && { height },
-								{
-									backgroundColor: light ? '#ffffff' : '#000000',
-									overflow: 'hidden',
-								},
-							],
-						},
-						// Window-sized in every layer, so layers crop the image alike
-						createElement(Image, {
-							source: { uri: background.uri },
-							blurRadius: background.blur,
-							resizeMode: 'cover',
-							style: {
-								position: 'absolute',
-								top: 0,
-								left: 0,
-								width,
-								height,
-								opacity: weight * (background.opacity ?? 1),
-							},
-						}),
-					)
-				}
-
-				module.default = ThemedGradient
-				cleanup(() => {
-					if (module.default === ThemedGradient) module.default = Original
-				})
+						return (
+							<View
+								pointerEvents="none"
+								style={[
+									props.absolute ? StyleSheet.absoluteFill : props.style,
+									props.wide && { width },
+									props.tall && { height },
+									{
+										backgroundColor:
+											resolveSemanticColor(theme, SurfaceColor) ??
+											(light ? '#ffffff' : '#000000'),
+										overflow: 'hidden',
+									},
+								]}
+							>
+								{/* Matches window dimensions so multi-layer crops align */}
+								<Image
+									source={{ uri: background.uri }}
+									blurRadius={background.blur}
+									resizeMode="cover"
+									style={{
+										position: 'absolute',
+										top: 0,
+										left: 0,
+										width,
+										height,
+										opacity: weight * (background.opacity ?? 1),
+									}}
+								/>
+							</View>
+						)
+					}),
+				)
 			},
 			{ cached: true },
 		),
@@ -194,23 +215,18 @@ export function patchBackgrounds(cleanup: PluginCleanupApi) {
 				'useActiveThemeType',
 			),
 			module => {
-				const original = module.useIsClientThemeOrCustomThemeActive
-				if (stopped) return
-
-				// Discord only counts saved custom themes, not previews like ours. Adds no hooks, like above.
-				function useIsClientThemeOrCustomThemeActive() {
-					return original() || activeBackground() !== undefined
-				}
-
-				module.useIsClientThemeOrCustomThemeActive =
-					useIsClientThemeOrCustomThemeActive
-				cleanup(() => {
-					if (
-						module.useIsClientThemeOrCustomThemeActive ===
-						useIsClientThemeOrCustomThemeActive
-					)
-						module.useIsClientThemeOrCustomThemeActive = original
-				})
+				// Discord only checks saved custom themes, excluding active previews
+				cleanup(
+					instead(
+						module,
+						'useIsClientThemeOrCustomThemeActive',
+						(args, orig) => {
+							useBackgroundUpdates()
+							const active = orig(...args)
+							return active || activeBackground() !== undefined
+						},
+					),
+				)
 			},
 			{ cached: true },
 		),
@@ -234,7 +250,7 @@ function currentTheme() {
 	return themeStore().theme
 }
 
-/** Custom theme Discord renders while a background is active. The same object until something it uses changes. */
+/** Custom theme settings applied while background is active. Caches result until inputs change. */
 function backgroundDisplaySettings() {
 	const state = themesStore.getState()
 	const background = activeBackgroundOf(state)
@@ -257,7 +273,7 @@ function backgroundDisplaySettings() {
 		gradientAngle: 0,
 		baseMix: BaseMix,
 	}
-	ownGradientSettings.add(customTheme)
+	ownGradientSettings.set(customTheme, background.dimming)
 
 	displaySettings = {
 		background,
@@ -268,7 +284,7 @@ function backgroundDisplaySettings() {
 	return displaySettings.value
 }
 
-/** Gradient color whose mix Discord renders as the theme's own surface color. */
+/** Calculates gradient color whose mix renders as theme surface color. */
 function gradientColorFor(surface: string, light: boolean) {
 	const weight = light ? GradientWeight.light : GradientWeight.dark
 	const overlay = light ? 255 : 0
