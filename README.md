@@ -77,4 +77,8 @@ This repository comes **pre-installed with Revenge**. If you want to use these p
 
 <!-- THEMES_TABLE_BEGIN -->
 
+| Name | Description | Authors | Version |
+| --- | --- | --- | --- |
+| [Google Sans Flex](themes/google-sans-flex) | Replaces Discord's gg sans with Google Sans Flex. | Palm <629368283354628116> (https://github.com/sponsors/PalmDevs "Donations") (https://palmdevs.me "Website") (https://github.com/PalmDevs "GitHub") | 1.0.0 |
+
 <!-- THEMES_TABLE_END -->
