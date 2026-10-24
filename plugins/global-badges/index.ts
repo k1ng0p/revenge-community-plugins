@@ -13,8 +13,9 @@ import {
 	parseBadges,
 } from './badges'
 import SettingsComponent from './settings'
+import { setupBadgeViewer } from './viewer'
 import type { JsonStorage } from '@revenge-mod/json-storage'
-import type { AnyPlugin } from '@revenge-mod/plugins/_'
+import type { PluginApi } from '@revenge-mod/plugins/types'
 import type { AnyObject } from '@revenge-mod/utils/types'
 import type { Settings } from './badges'
 
@@ -37,16 +38,17 @@ async function fetchBadges(
 
 	const storage = await jsonStorage.get()
 	const netInfo = await NetInfo.fetch()
+	let cached: AnyObject | undefined
+	try {
+		const json = await cacheStorage.get()
+		parseBadges(json)
+		cached = json
+	} catch {}
 
-	if (
-		// User said to not update on metered connections...
-		(netInfo.details?.isConnectionExpensive &&
-			!jsonStorage.cache?.updateOnMetered) ||
-		// or, cached data is still valid
-		Date.now() - (storage.lastFetched ?? 0) < RefreshInterval
-	) {
-		return await cacheStorage.get()
-	}
+	if (netInfo.details?.isConnectionExpensive && !storage.updateOnMetered)
+		return cached ?? { users: {} }
+	if (cached && Date.now() - (storage.lastFetched ?? 0) < RefreshInterval)
+		return cached
 
 	const response = await fetch('https://badges.equicord.org/users', {
 		signal: requestController.signal,
@@ -56,14 +58,16 @@ async function fetchBadges(
 	if (!response.ok) throw new Error(`Badge service returned ${response.status}`)
 
 	const json = await response.json()
-	await cacheStorage.set(json)
+	parseBadges(json)
+	await cacheStorage.set(json, true)
+	await jsonStorage.set({ lastFetched: Date.now() })
 	return json
 }
 
 async function refresh(
 	jsonStorage: JsonStorage<Settings>,
 	cacheStorage: JsonStorage<AnyObject>,
-	plugin: AnyPlugin,
+	plugin: PluginApi<{ jsonStorage: Settings }>['plugin'],
 	store: ReturnType<typeof createBadgeStore>,
 ) {
 	if (fetching || !active) return
@@ -83,7 +87,9 @@ async function refresh(
 
 export default plugin<{ jsonStorage: Settings }>({
 	jsonStorage: { load: true, default: DefaultSettings },
-	start({ cleanup, jsonStorage, plugin }) {
+	start(api) {
+		const { cleanup, jsonStorage, plugin } = api
+		active = true
 		if (plugin.startedLate) {
 			plugin.requireReload()
 			return
@@ -94,11 +100,14 @@ export default plugin<{ jsonStorage: Settings }>({
 		)
 
 		const store = createBadgeStore()
+		const profileProps = setupBadgeViewer(api, store)
 
 		const syncSettings = () => {
 			const value = jsonStorage.cache
 			store.setSettings({
 				left: value?.left === true,
+				showAll: value?.showAll === true,
+				badgeOrder: value?.badgeOrder ?? {},
 				showModStyle:
 					value?.showModStyle === 'prefix' || value?.showModStyle === 'suffix'
 						? value.showModStyle
@@ -114,7 +123,13 @@ export default plugin<{ jsonStorage: Settings }>({
 		})
 
 		syncSettings()
-		cleanup(jsonStorage.subscribe(syncSettings))
+		cleanup(
+			jsonStorage.subscribe(update => {
+				syncSettings()
+				if ('updateOnMetered' in update)
+					void refresh(jsonStorage, cacheStorage, plugin, store)
+			}),
+		)
 
 		cleanup(
 			getModules(
@@ -150,6 +165,14 @@ export default plugin<{ jsonStorage: Settings }>({
 		function patchBadgeProps<Args extends [unknown, unknown?, ...unknown[]]>(
 			args: Args,
 		): Args {
+			const component = args[0]
+			const type = isRecord(component) ? component.type : component
+			const name = typeof type === 'function' ? type.name : undefined
+			if (name === 'ProfileBadgeRows' && isRecord(args[1])) {
+				args[1] = profileProps(args[1])
+				return args
+			}
+			if (name !== 'ProfileBadge') return args
 			const props = badgeProps(args[1])
 			if (props) args[1] = props
 			return args
@@ -161,10 +184,10 @@ export default plugin<{ jsonStorage: Settings }>({
 			before(React, 'createElement', patchBadgeProps),
 		)
 
-		refresh(jsonStorage, cacheStorage, plugin, store).then(() => {
-			const interval = setInterval(refresh, RefreshInterval)
-			cleanup(() => clearInterval(interval))
-		})
+		const update = () => refresh(jsonStorage, cacheStorage, plugin, store)
+		update()
+		const interval = setInterval(update, RefreshInterval)
+		cleanup(() => clearInterval(interval))
 	},
 	stop({ plugin }) {
 		plugin.requireReload()

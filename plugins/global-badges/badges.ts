@@ -12,7 +12,6 @@ export const Providers = {
 	paicord: 'Paicord',
 	record: 'ReCord',
 	replugged: 'Replugged',
-	revenge: 'Revenge',
 	reviewdb: 'ReviewDB',
 	velocity: 'Velocity',
 	vencord: 'Vencord',
@@ -23,6 +22,8 @@ export type ModStyle = 'none' | 'prefix' | 'suffix'
 
 export interface Settings {
 	left: boolean
+	showAll: boolean
+	badgeOrder: Record<string, (string | number)[]>
 	updateOnMetered?: boolean
 	lastFetched?: number
 	showModStyle: ModStyle
@@ -31,6 +32,8 @@ export interface Settings {
 
 export const DefaultSettings: Settings = {
 	left: false,
+	showAll: false,
+	badgeOrder: {},
 	showModStyle: 'none',
 	providers: {},
 }
@@ -70,7 +73,10 @@ export function parseBadges(value: unknown): Map<string, Badge[]> {
 	const users = new Map<string, Badge[]>()
 	for (const [userId, badges] of Object.entries(value.users)) {
 		if (!Array.isArray(badges)) continue
-		const valid = badges.filter(isBadge)
+		const valid = badges.filter(
+			(badge): badge is Badge =>
+				isBadge(badge) && badge.mod.toLowerCase() !== 'revenge',
+		)
 		if (valid.length) users.set(userId, valid)
 	}
 	return users
@@ -112,7 +118,7 @@ export function createBadgeStore() {
 					!badge.id.startsWith('gb-'),
 			)
 			const badges = []
-			for (const [index, badge] of (users.get(userId) ?? []).entries()) {
+			for (const badge of users.get(userId) ?? []) {
 				const provider = Object.entries(Providers).find(
 					([key]) => key === badge.mod,
 				)
@@ -128,13 +134,48 @@ export function createBadgeStore() {
 						: settings.showModStyle === 'suffix'
 							? `${badge.tooltip} - ${name}`
 							: badge.tooltip
-				const id = `gb-${userId}-${index}`
+				const id = `gb-${userId}-${encodeURIComponent(`${badge.mod}:${badge.badge}`)}`
 				props.set(id, { id, userId, source: { uri: badge.badge }, label })
-				badges.push({ id, description: label, icon: 'dummy' })
+				badges.push({
+					id,
+					description: label,
+					icon: 'dummy',
+					iconSrc: badge.badge,
+				})
 			}
 			if (!badges.length)
 				return native.length === original.length ? original : native
-			return settings.left ? [...badges, ...native] : [...native, ...badges]
+			return orderBadges(
+				settings.left ? [...badges, ...native] : [...native, ...badges],
+				settings.badgeOrder[userId] ?? [],
+			)
 		},
 	}
+}
+
+export function isCustomBadgeId(id: unknown): id is string {
+	return typeof id === 'string' && id.startsWith('gb-')
+}
+
+export function orderBadges<T>(
+	badges: T[],
+	order: (string | number)[],
+	key = 'id',
+	resolve = (id: string | number): string | number => id,
+): T[] {
+	if (!order.length) return badges
+	const ranks = new Map(order.map((id, index) => [id, index]))
+	return [...badges].sort((a, b) => {
+		const first =
+			isRecord(a) && (typeof a[key] === 'string' || typeof a[key] === 'number')
+				? resolve(a[key])
+				: ''
+		const second =
+			isRecord(b) && (typeof b[key] === 'string' || typeof b[key] === 'number')
+				? resolve(b[key])
+				: ''
+		return (
+			(ranks.get(first) ?? order.length) - (ranks.get(second) ?? order.length)
+		)
+	})
 }
