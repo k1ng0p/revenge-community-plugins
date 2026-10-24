@@ -6,13 +6,15 @@
 		"build": "revenge-plugin build",
 		"build:dev": "revenge-plugin build --dev",
 		"generate-index": "revenge-plugin generate-index",
-		"plan-releases": "revenge-plugin plan-releases",
+		"plan-releases": "revenge-plugin plan-releases --plugins-dir plugins --plugins-dir themes",
+		"update-readme": "bun .github/scripts/update-readme.ts --plugins-dir plugins --plugins-dir themes",
 		"serve": "revenge-plugin serve",
 		"lint": "biome check",
-		"lint:types": "tsc -b plugins/*/tsconfig.json && tsc -p cli --noEmit"
+		"lint:types": "tsc -b plugins/*/tsconfig.json themes/*/tsconfig.json && tsc -p cli --noEmit"
 	},
 	"workspaces": [
-		"plugins/*"
+		"plugins/*",
+		"themes/*"
 	],
 	"dependencies": {
 		"@revenge-mod/devtools-client": "^1.4.0",
@@ -23,6 +25,8 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.15",
 		"@react-native-community/netinfo": "^12.0.1",
+		"@react-navigation/native": "^7.5.1",
+		"@react-navigation/stack": "^7.12.1",
 		"@shopify/flash-list": "^2.3.3",
 		"@swc/core-linux-x64-gnu": "^1.16.18",
 		"@types/node": "^26.6.5",

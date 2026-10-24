@@ -84,18 +84,14 @@ export default function realifyExpressions({
 	cleanup,
 	jsonStorage: storage,
 }: FakeNitroPluginContext) {
-	const EmojiStore = Stores.EmojiStore as DiscordModules.Flux.Store<{
-		getCustomEmojiById(id: string): BasicEmoji | undefined
-	}>
-
-	const StickersStore = Stores.StickersStore as DiscordModules.Flux.Store<{
-		getStickerById(id: string): BasicSticker | undefined
-	}>
-
 	let AvatarUtils: AvatarUtils | undefined
 	let StickersUtils: StickersUtils | undefined
 
 	function createEmojiNode({ id, name, animated }: ExpressionLink) {
+		const EmojiStore = Stores.EmojiStore as DiscordModules.Flux.Store<{
+			getCustomEmojiById(id: string): BasicEmoji | undefined
+		}>
+
 		const emoji = EmojiStore.getCustomEmojiById(id)
 		animated ||= emoji?.animated ?? false
 
@@ -110,6 +106,10 @@ export default function realifyExpressions({
 	}
 
 	function createSticker({ id, name, extension }: ExpressionLink): RowSticker {
+		const StickersStore = Stores.StickersStore as DiscordModules.Flux.Store<{
+			getStickerById(id: string): BasicSticker | undefined
+		}>
+
 		const known = StickersStore.getStickerById(id)
 		const sticker = {
 			id,

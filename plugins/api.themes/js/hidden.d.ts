@@ -1,3 +1,4 @@
+import type { Plugin } from '@revenge-mod/plugins/types'
 import type * as store from './store'
 
 declare module '@revenge-mod/plugins/types' {
@@ -6,6 +7,7 @@ declare module '@revenge-mod/plugins/types' {
 	> {
 		themesInternal: {
 			store: typeof store
+			plugin: Plugin<any, any>
 		}
 	}
 }

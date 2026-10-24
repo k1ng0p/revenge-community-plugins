@@ -1,7 +1,7 @@
 # Shiki Codeblocks
 
 Highlights code blocks in chat with [Shiki](https://shiki.style), the TextMate grammar highlighter VS Code uses, instead of Discord's built-in highlighter.
-Pick a theme for Discord's dark themes and one for its light theme in the plugin settings.
+Pick a theme for Discord's dark themes and one for its light theme in the plugin settings, or "Discord" to keep Discord's code colors with Shiki's grammars.
 Tap a code block to open it in a viewer, where its text can be selected and copied (can be turned off in settings).
 
 ## Architecture
@@ -60,6 +60,8 @@ graph TD
 
 `ansi` blocks are colored like on desktop, with the theme's terminal palette. Discord strips their escape sequences before rows reach native, so `ansi.ts` finds the raw block in the stored message (`MessageStore`, including forwards) by its stripped text, and highlights that. ANSI is built into Shiki, and its tokens leave out escape sequences, so JS sends the shown text (`text`) and background colors (`backgrounds`) along with the spans.
 Blocks in languages that aren't shipped, or over 20,000 characters, are left plain in the theme's colors, to match the rest.
+
+The "Discord" theme (`discord.ts`) maps TextMate scopes to Discord's code colors (`DiscordThemeObject.getTextCode*`, `getBackgroundCode`). JS can't know them, so its colors are placeholders (alpha `0x01`, the color's index as blue), which `DiscordPalette.kt` swaps for the `RenderContext` theme's colors when rendering. Blocks then follow Discord's theme, including light/dark and custom themes, from the same highlights. With it, blocks in languages that aren't shipped are left to Discord, which highlights some of them.
 Anything unexpected falls back to Discord's own highlighting instead of breaking chat: cache misses and JS errors.
 
 ### Assets
@@ -67,6 +69,9 @@ Anything unexpected falls back to Discord's own highlighting instead of breaking
 Grammar and themes are stored in `assets/shiki`, and are read when a code block first needs them:
 
 - `langs/<name>.json`: one grammar each. A grammar's `embeddedLangs` (eg. CSS and JavaScript in HTML) are loaded first.
+- `regexes/<name>.json`: the grammar's patterns, converted from Oniguruma to JS RegExps (`js/regex.ts`), keyed by the source string the engine asks for.
+  Converting was most of the cost of a language's first block (JavaScript: ~350 ms on Hermes, now ~70 ms), so it's done when generating.
+  The keys include vscode-textmate's `\z` rewrite and its four `\A`/`\G` anchor variants. Patterns made at runtime (`end` with back-references) are converted on the device.
 - `themes/<name>.json`
 - `index.json`: language names and aliases to their grammar, and theme labels and types for the settings.
 
@@ -81,5 +86,5 @@ Then commit the regenerated `assets/shiki`.
 ### Limitations
 
 - Changing a theme in settings needs a reload (turning Open on tap on or off doesn't). Rows already rendered keep their highlights, and Discord doesn't send them again.
-- The first block in a language is naturally slower, as its grammar is read and compiled then.
+- The first block in a language is slower, as Hermes compiles its grammar's RegExps then. Large grammars still take a while (C++: ~600 ms).
 - Fenced code inside a `markdown` code block isn't highlighted, as the languages Markdown embeds lazily aren't loaded.

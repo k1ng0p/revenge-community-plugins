@@ -6,7 +6,8 @@ import type { SettingsItem } from '@revenge-mod/discord/modules/settings'
 const RevengeThemesKindSetting: SettingsItem = {
 	parent: null,
 	type: 'route',
-	useTitle: () => 'Themes',
+	useTitle: () => 'Theme Items',
+	unsearchable: true,
 	screen: {
 		route: RouteNames[Setting.RevengeThemesKind],
 		getComponent: () => RevengeThemesKindSettingScreen.default,

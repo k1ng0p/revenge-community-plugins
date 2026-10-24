@@ -3,7 +3,6 @@ import Page from '@revenge-mod/components/Page'
 import { Design } from '@revenge-mod/discord/design'
 import { useLayoutEffect } from 'react'
 import { OptionList } from '../components/OptionList'
-import ReloadButton from '../components/ReloadButton'
 import { RouteNames, Setting } from '../constants'
 import { FontRoleLabels, Kinds, useKindSections } from '../utils/kinds'
 import type { KindRouteParams } from '../types'
@@ -35,31 +34,32 @@ export default function RevengeThemesKindSettingScreen({
 	const title = role ? FontRoleLabels[role] : tab
 	const individualFonts = kind === 'fontPacks' && !role
 
+	const settings = individualFonts
+		? { label: 'Individual fonts', route: Setting.RevengeThemesFontFamilies }
+		: kind === 'themes'
+			? { label: 'Background', route: Setting.RevengeThemesBackground }
+			: undefined
+
 	useLayoutEffect(() => {
 		navigation.setOptions({
 			title,
-			headerRight: individualFonts
+			headerRight: settings
 				? () => (
 						<IconButton
 							style={{ marginInlineEnd: 8 }}
 							size="sm"
 							variant="secondary"
 							icon={SettingsIcon}
-							accessibilityLabel="Individual fonts"
-							onPress={() =>
-								navigation.navigate(
-									RouteNames[Setting.RevengeThemesFontFamilies],
-								)
-							}
+							accessibilityLabel={settings.label}
+							onPress={() => navigation.navigate(RouteNames[settings.route])}
 						/>
 					)
 				: undefined,
 		})
-	}, [navigation, title, individualFonts])
+	}, [navigation, title, settings?.route])
 
 	return (
-		<Page spacing={16}>
-			<ReloadButton />
+		<Page>
 			<OptionList
 				kind={kind}
 				sections={sections}

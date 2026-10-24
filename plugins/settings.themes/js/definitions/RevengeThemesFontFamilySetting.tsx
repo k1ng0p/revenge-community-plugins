@@ -6,7 +6,8 @@ import type { SettingsItem } from '@revenge-mod/discord/modules/settings'
 const RevengeThemesFontFamilySetting: SettingsItem = {
 	parent: null,
 	type: 'route',
-	useTitle: () => 'Themes',
+	useTitle: () => 'Font Family',
+	unsearchable: true,
 	screen: {
 		route: RouteNames[Setting.RevengeThemesFontFamily],
 		getComponent: () => RevengeThemesFontFamilySettingScreen.default,

@@ -30,6 +30,8 @@ export interface Kind {
 	label: string
 	selection: Exclude<keyof ThemesState, 'format'>
 	empty: string
+	/** Applies without a reload. */
+	live?: boolean
 	reset: () => Promise<void>
 	select: (plugin: string, groupId: string, id: string) => Promise<void>
 }
@@ -40,6 +42,7 @@ export const Kinds: Record<EntryKind, Kind> = {
 		label: 'colors',
 		selection: 'colors',
 		empty: 'Install a theme plugin to get color themes.',
+		live: true,
 		reset: () => selectTheme(null),
 		select: selectTheme,
 	},
@@ -57,6 +60,7 @@ export const Kinds: Record<EntryKind, Kind> = {
 		label: 'icons',
 		selection: 'icons',
 		empty: 'Install a theme plugin to get icon packs.',
+		live: true,
 		reset: () => selectIconPack(null),
 		select: selectIconPack,
 	},

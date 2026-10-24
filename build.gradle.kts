@@ -40,7 +40,7 @@ tasks.register<Delete>("clean") {
 val cleanTasks = Callable { rootProject.allprojects.mapNotNull { it.tasks.findByName("clean") } }
 
 // ---------------------------------------------------------------------------------------------
-// Plugins declared under plugins/<name>/manifest.json
+// Plugins declared under plugins/<name>/manifest.json and themes/<name>/manifest.json
 // ---------------------------------------------------------------------------------------------
 
 @Suppress("UNCHECKED_CAST")
@@ -59,9 +59,10 @@ data class PluginDef(
     val scriptName: String?,
 )
 
-val pluginDefs = file("plugins").listFiles().orEmpty()
+val pluginRoots = listOf("plugins", "themes")
+
+val pluginDefs = pluginRoots.flatMap { file(it).listFiles().orEmpty().sortedBy(File::getName) }
     .filter(File::isDirectory)
-    .sortedBy(File::getName)
     .mapNotNull { dir ->
         val manifest = File(dir, "manifest.json").takeIf(File::isFile)?.let(::parseJson)
             ?: return@mapNotNull null
@@ -86,19 +87,31 @@ data class JsTool(val kind: String, val exe: File) {
             else -> error("Unknown JS tool: $kind")
         }
 
-    val buildCommand: List<String>
-        get() = when (kind) {
-            "npm" -> listOf(exe.absolutePath, "run", "build")
-            "bun" -> listOf(exe.absolutePath, "--bun", "run", "build")
-            // Deno creates no node_modules/.bin shims, so `deno task build` cannot resolve the CLI,
-            // so we run its bin file directly.
+    fun buildCommand(args: List<String>): List<String> = when (kind) {
+        "npm" -> listOf(exe.absolutePath, "run", "build", "--") + args
+        "bun" -> listOf(exe.absolutePath, "--bun", "run", "build") + args
+        // Deno creates no node_modules/.bin shims, preventing `deno task build` from resolving the CLI.
+        // Run its bin file directly.
             "deno" -> listOf(
                 exe.absolutePath, "run", "-A",
                 "node_modules/@revenge-mod/plugin-cli/bin/revenge-plugin.js", "build",
-            )
+        ) + args
             else -> error("Unknown JS tool: $kind")
         }
+
+    // Put the tool's own dir on PATH so nested calls (npm -> node, script -> bin shims) resolve.
+    val path: String
+        get() = exe.parentFile.absolutePath + File.pathSeparator + System.getenv("PATH").orEmpty()
 }
+
+// Fail instead of skip to avoid recording an empty run as up to date,
+// preventing packaging ZIPs with missing or stale bundles.
+fun requireJsTool(): JsTool = findJsTool() ?: throw GradleException(
+    "No JS toolchain found (bun, npm, deno). Install Node >= 22.18, Bun or Deno 2, " +
+        "or pass -PjsTool=/-PjsToolPath=. If a sandboxed IDE (Flatpak) or container started the " +
+        "Gradle daemon, it may not see the tools in your home directory: run `./gradlew --stop` " +
+        "and build again, or build with --no-daemon.",
+)
 
 fun findJsTool(): JsTool? {
     val kindOverride = findProperty("jsTool") as String?
@@ -141,11 +154,11 @@ fun findJsTool(): JsTool? {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Native plugin modules (:plugins:<name>) are configured entirely from here,
+// Native plugin modules (:plugins:<name>, :themes:<name>) are configured entirely from here,
 // so a native plugin needs nothing but a src/main folder and a manifest.json.
 // ---------------------------------------------------------------------------------------------
 
-configure(subprojects.filter { it.path.startsWith(":plugins:") }) {
+configure(subprojects.filter { project -> pluginRoots.any { project.path.startsWith(":$it:") } }) {
     // AGP 9 has built-in Kotlin support, so org.jetbrains.kotlin.android isn't applied.
     pluginManager.apply(androidLibraryPluginId)
 
@@ -250,47 +263,82 @@ configure(subprojects.filter { it.path.startsWith(":plugins:") }) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// JS bundles (all plugins at once) and per-plugin packaging into build/dist/<id>@<version>.zip
+// JS bundles (one task per plugin) and per-plugin packaging into build/dist/<id>@<version>.zip
 // ---------------------------------------------------------------------------------------------
+
+// Bundler is @revenge-mod/plugin-cli. Lockfiles pinning its revision are inputs.
+val jsConfigFiles = files(
+    "package.json", "tsconfig.base.json", "biome.json",
+    "bun.lock", "bun.lockb", "package-lock.json", "deno.lock",
+)
+
+val installJs = tasks.register("installJs") {
+    group = "revenge"
+    description = "Installs the JS dependencies needed to build plugin bundles."
+    mustRunAfter(cleanTasks)
+
+    inputs.files(jsConfigFiles).withPropertyName("config")
+    // Stamp file instead of node_modules itself to avoid slow fingerprinting.
+    val stamp = layout.buildDirectory.file("tmp/installJs.stamp")
+    outputs.file(stamp).withPropertyName("stamp")
+    outputs.upToDateWhen { File(rootDir, "node_modules").isDirectory }
+
+    doLast {
+        val tool = requireJsTool()
+        logger.lifecycle("Installing JS dependencies with ${tool.kind} (${tool.exe})")
+        rootExecOps.exec {
+            workingDir = rootDir
+            environment("PATH", tool.path)
+            commandLine(tool.installCommand)
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText(tool.kind)
+    }
+}
 
 val buildJs = tasks.register("buildJs") {
     group = "revenge"
     description = "Builds every plugin's JS bundle via the revenge-plugin CLI."
+}
+
+// `-Pdev` builds unminified bundles with __DEV__ set, e.g. `./gradlew packageShikiCodeblocks -Pdev`.
+val jsDev = providers.gradleProperty("dev").map { it != "false" }.orElse(false)
+
+fun taskSuffix(dirName: String): String =
+    dirName.split(Regex("[^A-Za-z0-9]")).filter(String::isNotEmpty)
+        .joinToString("") { it.replaceFirstChar(Char::uppercase) }
+
+val buildJsTasks = pluginDefs.filter { it.scriptName != null }.associate { def ->
+    val name = def.dir.name
+    val task = tasks.register("buildJs${taskSuffix(name)}") {
+        group = "revenge"
+        description = "Builds the JS bundle of '${def.id}' via the revenge-plugin CLI."
+        dependsOn(installJs)
     mustRunAfter(cleanTasks)
 
-    // The bundler is @revenge-mod/plugin-cli, so the lockfiles (which pin its revision) are the inputs.
-    inputs.files(
-        "package.json", "tsconfig.json", "biome.json",
-        "bun.lock", "bun.lockb", "package-lock.json", "deno.lock",
-    ).withPropertyName("config")
-    // Everything a plugin's bundle can be built from.
-    inputs.files(fileTree("plugins") { exclude("*/build/**", "*/src/**") }).withPropertyName("sources")
-
-    pluginDefs.filter { it.scriptName != null }.forEach {
-        outputs.dir(File(it.dir, "build/js")).withPropertyName("bundle-${it.dir.name}")
-    }
+        inputs.files(jsConfigFiles).withPropertyName("config")
+        inputs.property("dev", jsDev)
+        // Everything this plugin's bundle can be built from.
+        inputs.files(fileTree(def.dir) { exclude("build/**", "src/**") }).withPropertyName("sources")
+        val bundle = File(def.dir, "build/js")
+        outputs.dir(bundle).withPropertyName("bundle")
 
     doLast {
-        val tool = findJsTool()
-        if (tool == null) {
-            logger.warn(
-                "No JS toolchain found (bun, npm, deno). Install Node >= 22.18, Bun or Deno 2, " +
-                    "or pass -PjsTool=/-PjsToolPath=. Skipping JS build.",
-            )
-            return@doLast
-        }
-
-        logger.lifecycle("Building JS bundles with ${tool.kind} (${tool.exe})")
-        // Put the tool's own dir on PATH so nested calls (npm -> node, script -> bin shims) resolve.
-        val path = tool.exe.parentFile.absolutePath + File.pathSeparator + System.getenv("PATH").orEmpty()
-        listOf(tool.installCommand, tool.buildCommand).forEach { cmd ->
+            val tool = requireJsTool()
+            val dev = jsDev.get()
+            logger.lifecycle("Building $name's ${if (dev) "dev " else ""}JS bundle with ${tool.kind} (${tool.exe})")
             rootExecOps.exec {
                 workingDir = rootDir
-                environment("PATH", path)
-                commandLine(cmd)
+                environment("PATH", tool.path)
+                val args = listOf("--plugins-dir", def.dir.parentFile.name, name)
+                commandLine(tool.buildCommand(args + listOfNotNull("--dev".takeIf { dev })))
+            }
+            if (!File(bundle, "index.js").isFile) {
+                throw GradleException("JS build produced no bundle for ${def.id}")
             }
         }
     }
+    buildJs.configure { dependsOn(task) }
+    def.dir to task
 }
 
 // Packaging always starts from an empty dist directory. Archive names only contain the
@@ -307,21 +355,18 @@ val packageAllPlugins = tasks.register("packageAllPlugins") {
     description = "Builds and packages every plugin into build/dist/<id>@<version>.zip."
 }
 
-fun taskSuffix(dirName: String): String =
-    dirName.split(Regex("[^A-Za-z0-9]")).filter(String::isNotEmpty)
-        .joinToString("") { it.replaceFirstChar(Char::uppercase) }
-
 pluginDefs.forEach { (dir, id, version, jarName, scriptName) ->
     val pkg = tasks.register<Zip>("package${taskSuffix(dir.name)}") {
         group = "revenge"
         description = "Packages '$id' into a distributable ZIP."
-        dependsOn(buildJs, cleanDist)
+        dependsOn(cleanDist)
+        buildJsTasks[dir]?.let { dependsOn(it) }
         mustRunAfter(cleanTasks)
 
         from(File(dir, "manifest.json"))
 
         if (jarName != null && File(dir, "src/main").isDirectory) {
-            val nativePath = ":plugins:${dir.name}"
+            val nativePath = ":${dir.parentFile.name}:${dir.name}"
             dependsOn("$nativePath:dexJar")
             from(provider { project(nativePath).tasks.named("dexJar").get().outputs.files.singleFile }) {
                 rename { jarName }

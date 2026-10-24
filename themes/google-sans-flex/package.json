@@ -1,0 +1,6 @@
+{
+	"name": "@palmdevs/revenge-google-sans-flex-font",
+	"devDependencies": {
+		"@revenge-mod/themes-api": "workspace:*"
+	}
+}

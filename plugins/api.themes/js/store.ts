@@ -5,11 +5,17 @@ import {
 } from '@revenge-mod/assets'
 import { pluginDistDirFor } from '@revenge-mod/plugins/constants'
 import { createStore } from 'zustand/vanilla'
-import { resolvePreviewColors, setThemeColors } from './colors'
+import {
+	discordColors,
+	refreshThemedComponents,
+	resolvePreviewColors,
+	setThemeColors,
+} from './colors'
 import {
 	readPreviewEmoji,
 	readThemesState,
 	registerPreviewFont,
+	writeBackgroundSettings,
 	writeColorsSelection,
 	writeEmojiSelection,
 	writeFontsSelection,
@@ -18,6 +24,7 @@ import {
 import type { PackagerAsset } from '@revenge-mod/assets/types'
 import type { PluginManifest } from '@revenge-mod/plugins/types'
 import type {
+	BackgroundSettings,
 	ColorsSelection,
 	EmojiPackDefinition,
 	EmojiSelection,
@@ -27,6 +34,7 @@ import type {
 	FontsSelection,
 	IconPackDefinition,
 	IconsSelection,
+	ThemeBackground,
 	ThemeBase,
 	ThemeDefinition,
 	ThemeGroupDefinition,
@@ -193,11 +201,14 @@ export async function selectTheme(
 
 	if (plugin !== null) {
 		const theme = entryOf(plugin, groupId!, 'themes', themeId!)
+		const discord = discordColors()
+		if (!discord) throw new Error("Discord's colors haven't loaded yet")
+
 		selection = {
 			plugin,
 			group: groupId!,
 			theme: themeId!,
-			values: theme.getColors(),
+			values: theme.getColors(discord),
 		}
 	}
 
@@ -205,7 +216,11 @@ export async function selectTheme(
 
 	setThemeColors(selection?.values)
 	setSelected({ colors: selection })
-	await writeColorsSelection(selection ?? null)
+	try {
+		await writeColorsSelection(selection ?? null)
+	} finally {
+		refreshThemedComponents()
+	}
 }
 
 /**
@@ -367,7 +382,11 @@ export async function selectIconPack(
 
 	applyIconOverrides(previous, selection)
 	setSelected({ icons: selection })
-	await writeIconsSelection(selection ?? null)
+	try {
+		await writeIconsSelection(selection ?? null)
+	} finally {
+		refreshThemedComponents()
+	}
 }
 
 export function selectEmojiPack(plugin: null): Promise<void>
@@ -413,10 +432,14 @@ export function previewColorsOf(
 	names: string[],
 	context?: object,
 ) {
+	if (plugin === null)
+		return resolvePreviewColors(undefined, theme, names, context)
+
+	const discord = discordColors()
+	if (!discord) return
+
 	return resolvePreviewColors(
-		plugin === null
-			? undefined
-			: entryOf(plugin, groupId, 'themes', themeId).getColors(),
+		entryOf(plugin, groupId, 'themes', themeId).getColors(discord),
 		theme,
 		names,
 		context,
@@ -493,12 +516,15 @@ export function previewIconsOf(
 function fontFamiliesOf(plugin: string, pack: FontPackDefinition) {
 	const families: Record<string, FontSource['variants']> = {}
 	for (const [family, variants] of Object.entries(pack.families))
-		families[family] = variants.map(variant => ({
-			path: resolvePath(plugin, variant.path),
-			weight: variant.weight ?? 400,
-			italic: variant.italic ?? false,
-			axes: variant.axes ?? {},
-		}))
+		families[family] =
+			variants === 'system-ui'
+				? [{ path: 'system-ui', weight: 400, italic: false, axes: {} }]
+				: variants.map(variant => ({
+						path: resolvePath(plugin, variant.path),
+						weight: variant.weight ?? 400,
+						italic: variant.italic ?? false,
+						axes: variant.axes ?? {},
+					}))
 	return families
 }
 
@@ -615,6 +641,81 @@ function androidResourceIdentifierOf(asset: PackagerAsset) {
 		.replace(/\//g, '_')
 		.replace(/[^a-z0-9_]/g, '')
 		.replace(/^(?:assets|assetsunstable_path)_/, '')
+}
+
+export interface ActiveBackground {
+	uri: string
+	opacity?: number
+	blur: number
+	dimming: number
+}
+
+let lastActiveBackground:
+	| {
+			theme: ThemeBackground | undefined
+			settings: BackgroundSettings | undefined
+			value: ActiveBackground | undefined
+	  }
+	| undefined
+
+/** Background configuration provided by the active color theme, if defined. */
+export function themeBackgroundOf({ groups, selected }: ThemesStoreState) {
+	const colors = selected.colors
+	if (colors)
+		return groups[colors.plugin]?.[colors.group]?.themes[colors.theme]
+			?.background
+}
+
+export function activeBackgroundOf(state: ThemesStoreState) {
+	const theme = themeBackgroundOf(state)
+	const settings = state.selected.background
+	if (
+		lastActiveBackground &&
+		lastActiveBackground.theme === theme &&
+		lastActiveBackground.settings === settings
+	)
+		return lastActiveBackground.value
+
+	const source = settings?.source ?? 'theme'
+	// Theme opacity, blur and dimming defaults apply exclusively to theme backgrounds.
+	const base = source === 'theme' ? theme : undefined
+	const path = source === 'custom' ? settings?.path : base?.path
+
+	const value: ActiveBackground | undefined = path
+		? {
+				uri: imageUriOf(path, state.selected.colors?.plugin),
+				opacity: settings?.opacity ?? base?.opacity,
+				blur: settings?.blur ?? base?.blur ?? 0,
+				dimming: settings?.dimming ?? base?.dimming ?? 0.7,
+			}
+		: undefined
+
+	lastActiveBackground = { theme, settings, value }
+	return value
+}
+
+export async function setBackgroundSettings(
+	settings: BackgroundSettings | null,
+) {
+	if (
+		sameJson(themesStore.getState().selected.background, settings ?? undefined)
+	)
+		return
+
+	setSelected({ background: settings ?? undefined })
+	try {
+		await writeBackgroundSettings(settings)
+	} finally {
+		refreshThemedComponents()
+	}
+}
+
+export { importBackgroundImage } from './native'
+
+function imageUriOf(path: string, plugin: string | undefined) {
+	if (/^https?:\/\//i.test(path)) return path
+	if (path.startsWith('/')) return `file://${path}`
+	return plugin ? `file://${resolvePath(plugin, path)}` : path
 }
 
 function resolvePath(plugin: string, path: string) {

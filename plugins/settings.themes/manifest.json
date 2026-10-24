@@ -1,14 +1,14 @@
 {
 	"format": 1,
 	"id": "revenge.settings.themes",
-	"name": "Theme Settings",
-	"description": "Manage your color themes, font packs, icon packs, and emoji picks.",
+	"name": "Themes",
+	"description": "Color themes, font packs, icon packs, and emoji packs.",
 	"author": "Revenge",
 	"contributors": [
 		"Palm <629368283354628116> (https://github.com/sponsors/PalmDevs \"Donations\") (https://palmdevs.me \"Website\") (https://github.com/PalmDevs \"GitHub\")"
 	],
 	"icon": "PaintPaletteIcon",
-	"version": "1.0.0",
+	"version": "1.5.0",
 	"dependencies": {
 		"revenge.api": {
 			"version": ">=1 <2"
@@ -17,7 +17,9 @@
 			"version": "*"
 		},
 		"revenge.settings": {},
-		"revenge.api.themes": {},
+		"revenge.api.themes": {
+			"version": ">=1.2.0 <2"
+		},
 		"revenge.settings.plugins": {}
 	},
 	"dist": {

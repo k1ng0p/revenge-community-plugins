@@ -1,6 +1,6 @@
 import type {
-	FontPackDefinition,
 	FontVariant,
+	ThemeBackground,
 	ThemeColors,
 } from '@revenge-mod/themes-api/types'
 
@@ -13,6 +13,13 @@ export interface LegacyTheme {
 	/** Semantic colors mapped to `[dark, light, midnight?]` hex values. */
 	semanticColors?: Record<string, string[]>
 	rawColors?: Record<string, string>
+	background?: {
+		url: string
+		/** Image opacity. */
+		alpha?: number
+		/** Blur radius. */
+		blur?: number
+	}
 }
 
 /** Bunny font pack format (spec 1). */
@@ -81,6 +88,25 @@ export function legacyThemeColors(theme: LegacyTheme): ThemeColors {
 	}
 }
 
+/** Converts a legacy background, skipping one without an `http(s)` URL. */
+export function legacyThemeBackground(
+	theme: LegacyTheme,
+): ThemeBackground | undefined {
+	const background = theme.background
+	if (
+		typeof background?.url !== 'string' ||
+		!/^https?:\/\//i.test(background.url)
+	)
+		return
+
+	return {
+		path: background.url,
+		opacity:
+			typeof background.alpha === 'number' ? background.alpha : undefined,
+		blur: typeof background.blur === 'number' ? background.blur : undefined,
+	}
+}
+
 /**
  * Groups font files into families with upright and italic variants, deriving weights from name suffixes.
  *
@@ -88,8 +114,8 @@ export function legacyThemeColors(theme: LegacyTheme): ThemeColors {
  */
 export function legacyFontFamilies(
 	files: Record<string, string>,
-): FontPackDefinition['families'] {
-	const families: FontPackDefinition['families'] = {}
+): Record<string, FontVariant[]> {
+	const families: Record<string, FontVariant[]> = {}
 
 	for (const [name, path] of Object.entries(files)) {
 		const italic = name.endsWith('Italic') && name !== 'Italic'

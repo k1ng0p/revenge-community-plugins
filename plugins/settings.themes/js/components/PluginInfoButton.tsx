@@ -20,7 +20,7 @@ export default function PluginInfoButton({ plugin }: { plugin: string }) {
 			accessibilityLabel="Plugin info"
 			onPress={() => {
 				try {
-					pluginSettings!.showPluginOptionsSheet(plugin)
+					pluginSettings.showPluginOptionsSheet(plugin)
 				} catch (e) {
 					showErrorToast(e)
 				}

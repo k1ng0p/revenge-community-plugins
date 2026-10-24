@@ -80,18 +80,6 @@ const LurkerUpgradeSources = new Set([
 
 export default plugin({
 	start({ cleanup }) {
-		const InviteStore = Stores.InviteStore as DiscordModules.Flux.Store<{
-			getInvite(inviteKey: string): Invite | undefined
-		}>
-
-		const GuildStore = Stores.GuildStore as DiscordModules.Flux.Store<{
-			getGuild(guildId: string): object | undefined
-		}>
-
-		const LurkingStore = Stores.LurkingStore as DiscordModules.Flux.Store<{
-			isLurking(guildId: string): boolean
-		}>
-
 		cleanup(
 			getModules(
 				withProps<GuildActionCreators>('joinGuild', 'transitionToGuildSync'),
@@ -113,6 +101,19 @@ export default plugin({
 					'acceptInviteAndTransitionToInviteChannel',
 				),
 				InstantInviteActionCreators => {
+					const InviteStore = Stores.InviteStore as DiscordModules.Flux.Store<{
+						getInvite(inviteKey: string): Invite | undefined
+					}>
+
+					const GuildStore = Stores.GuildStore as DiscordModules.Flux.Store<{
+						getGuild(guildId: string): object | undefined
+					}>
+
+					const LurkingStore =
+						Stores.LurkingStore as DiscordModules.Flux.Store<{
+							isLurking(guildId: string): boolean
+						}>
+
 					// Accepting an invite always joins for real, so lurk instead
 					// Only PREVIEW_ENABLED servers can be lurked, the rest go thru the normal invite flow
 					cleanup(

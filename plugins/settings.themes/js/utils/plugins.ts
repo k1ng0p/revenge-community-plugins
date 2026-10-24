@@ -1,3 +1,4 @@
+import manifest from '../../manifest.json' with { type: 'json' }
 import type { PluginMatch } from '@revenge-mod/types/plugins/settings.plugins'
 
 const ThemesApiId = 'revenge.api.themes'
@@ -7,4 +8,6 @@ const ThemesApiId = 'revenge.api.themes'
  * Claimed while this plugin runs to manage and browse them under Themes.
  */
 export const isThemePlugin: PluginMatch = plugin =>
-	plugin.dependencies[ThemesApiId]?.optional === false
+	plugin.id !== manifest.id &&
+	(plugin.dependencies[ThemesApiId]?.optional === false ||
+		plugin.id === ThemesApiId)

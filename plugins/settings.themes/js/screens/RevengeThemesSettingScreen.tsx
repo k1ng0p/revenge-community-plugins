@@ -1,10 +1,12 @@
 import { getAssetIdByName } from '@revenge-mod/assets'
+import { TableRowAssetIcon } from '@revenge-mod/components'
 import Page from '@revenge-mod/components/Page'
 import { Design } from '@revenge-mod/discord/design'
 import { ReactNavigationNative } from '@revenge-mod/externals/react-navigation'
+import { lookupGeneratedIconComponent } from '@revenge-mod/utils/discord'
 import { useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, useWindowDimensions } from 'react-native'
-import { pluginSettings } from '..'
+import { pluginSettings, themesInternal } from '..'
 import KindCard from '../components/KindCard'
 import ReloadButton from '../components/ReloadButton'
 import { RouteNames, Setting } from '../constants'
@@ -15,7 +17,7 @@ import type { EntryKind } from '@revenge-mod/themes-api/store'
 import type { LayoutChangeEvent } from 'react-native'
 import type { KindRouteParams } from '../types'
 
-const { Button, Text, Stack } = Design
+const { Button, TableRow, TableRowGroup, Text, Stack } = Design
 
 const DenyIcon = getAssetIdByName('DenyIcon')!
 const PuzzlePieceIcon = getAssetIdByName('PuzzlePieceIcon')!
@@ -113,6 +115,22 @@ export default function RevengeThemesSettingScreen() {
 						onPress={() => resetAll().then(markReloadNeeded, showErrorToast)}
 					/>
 				</Stack>
+				<TableRowGroup>
+					<TableRow
+						variant="danger"
+						icon={
+							<TableRowAssetIcon
+								variant="danger"
+								IconComponent={
+									lookupGeneratedIconComponent('HandRequestDenyIcon')!
+								}
+							/>
+						}
+						label="Disable all theming features"
+						subLabel="You can re-enable theming later from the Plugins page"
+						onPress={() => themesInternal.plugin.disable()}
+					/>
+				</TableRowGroup>
 			</Page>
 		</ScrollView>
 	)

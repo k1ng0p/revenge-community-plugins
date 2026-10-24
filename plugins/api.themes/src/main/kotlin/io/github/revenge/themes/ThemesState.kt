@@ -79,12 +79,24 @@ internal data class EmojiSelection(
     val font: String? = null,
 )
 
+/** User's background settings, applied by JS. Unset values keep the color theme's. */
+internal data class BackgroundSettings(
+    /** `theme`, `custom` or `none`. */
+    val source: String,
+    /** Absolute image path, for `custom`. */
+    val path: String? = null,
+    val opacity: Double? = null,
+    val blur: Double? = null,
+    val dimming: Double? = null,
+)
+
 internal data class ThemesState(
     val format: Int = THEMES_STATE_FORMAT,
     val colors: ColorsSelection? = null,
     val fonts: FontsSelection? = null,
     val icons: IconsSelection? = null,
     val emoji: EmojiSelection? = null,
+    val background: BackgroundSettings? = null,
 )
 
 /** Reads and writes `state.json` in the plugin's storage dir. */
@@ -129,7 +141,19 @@ internal fun themesStateOf(json: JSONObject) = ThemesState(
     fonts = json.optJSONObject("fonts")?.let(::fontsSelectionOf),
     icons = json.optJSONObject("icons")?.let(::iconsSelectionOf),
     emoji = json.optJSONObject("emoji")?.let(::emojiSelectionOf),
+    background = json.optJSONObject("background")?.let(::backgroundSettingsOf),
 )
+
+internal fun backgroundSettingsOf(json: JSONObject) = BackgroundSettings(
+    source = json.getString("source"),
+    path = json.optStringOrNull("path"),
+    opacity = json.optDoubleOrNull("opacity"),
+    blur = json.optDoubleOrNull("blur"),
+    dimming = json.optDoubleOrNull("dimming"),
+)
+
+private fun JSONObject.optDoubleOrNull(key: String): Double? =
+    if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() }
 
 internal fun colorsSelectionOf(json: JSONObject) = ColorsSelection(
     plugin = json.getString("plugin"),
@@ -196,6 +220,15 @@ internal fun ThemesState.toJson(): JSONObject = JSONObject().apply {
     fonts?.let { put("fonts", it.toJson()) }
     icons?.let { put("icons", it.toJson()) }
     emoji?.let { put("emoji", it.toJson()) }
+    background?.let { put("background", it.toJson()) }
+}
+
+private fun BackgroundSettings.toJson() = JSONObject().apply {
+    put("source", source)
+    path?.let { put("path", it) }
+    opacity?.let { put("opacity", it) }
+    blur?.let { put("blur", it) }
+    dimming?.let { put("dimming", it) }
 }
 
 private fun ColorsSelection.toJson() = JSONObject().apply {

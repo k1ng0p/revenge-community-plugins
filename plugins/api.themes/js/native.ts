@@ -3,6 +3,7 @@ import {
 	callNativeMethodSync,
 } from '@revenge-mod/modules/native'
 import type {
+	BackgroundSettings,
 	ColorsSelection,
 	EmojiSelection,
 	FontsSelection,
@@ -39,6 +40,17 @@ export function writeEmojiSelection(selection: EmojiSelection | null) {
 	])
 }
 
+export function writeBackgroundSettings(settings: BackgroundSettings | null) {
+	return callNativeMethod('revenge.themes.setBackground', [
+		settings && JSON.stringify(settings),
+	])
+}
+
+/** Copies a picked image (`file://` or `content://`) into storage. Resolves to its absolute path. */
+export function importBackgroundImage(uri: string) {
+	return callNativeMethod('revenge.themes.importBackground', [uri])
+}
+
 /** Registers {@link name} as a font family React Native can render previews with. */
 export function registerPreviewFont(
 	name: string,
@@ -72,6 +84,8 @@ declare module '@revenge-mod/modules/native' {
 		'revenge.themes.setFonts': [[json: string | null], null]
 		'revenge.themes.setIcons': [[json: string | null], null]
 		'revenge.themes.setEmoji': [[json: string | null], null]
+		'revenge.themes.setBackground': [[json: string | null], null]
+		'revenge.themes.importBackground': [[uri: string], string]
 		'revenge.themes.previewFont': [[json: string], null]
 		'revenge.themes.previewEmoji': [[json: string], string]
 	}
